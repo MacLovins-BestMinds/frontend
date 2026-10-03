@@ -16,26 +16,26 @@ import type {
 
 const SPINS: Spin[] = [
   {
-    category: { id: "philosophy", title: "🏛 Философия жизни" },
+    category: { id: "philosophy", title: "🏛 Philosophy for Life" },
     case: {
       id: "stoicism",
-      title: "Стоицизм (Stoicism)",
-      brief: "Объясни простыми словами, что такое стоицизм, и убеди преподавателей, что его стоит разбирать со студентами.",
+      title: "Stoicism",
+      brief: "Explain in simple words what Stoicism is and convince teachers it's worth discussing with students.",
       audience: "преподаватели",
       summary: "Stoicism is a philosophical movement and practical guide to living, emphasizing daily self-discipline and moral improvement, which originated in the Hellenistic period of ancient Greece and continued well into the Roman Imperial period.",
       sources: [
         { title: "Wikipedia: Stoicism", url: "https://en.wikipedia.org/wiki/Stoicism" },
         { title: "Britannica: Stoicism", url: "https://www.britannica.com/topic/Stoicism" },
-        { title: "Simple English Wikipedia: Stoicism (простой английский)", url: "https://simple.wikipedia.org/wiki/Stoicism" },
+        { title: "Simple English Wikipedia: Stoicism (easy English)", url: "https://simple.wikipedia.org/wiki/Stoicism" },
       ],
     },
   },
   {
-    category: { id: "thinking_traps", title: "🧠 Ловушки мышления" },
+    category: { id: "thinking_traps", title: "🧠 Thinking Traps" },
     case: {
       id: "sunk_cost",
-      title: "Ошибка невозвратных затрат (Sunk cost fallacy)",
-      brief: "Объясни на примере, что такое ловушка невозвратных затрат, и убеди бизнесменов вовремя закрывать провальные проекты.",
+      title: "The Sunk Cost Fallacy",
+      brief: "Explain the sunk cost trap with an example and convince business people to shut down failing projects in time.",
       audience: "бизнесмены",
       summary: "In economics and business decision-making, a sunk cost is a cost that has already been incurred and cannot be recovered. Sunk costs are contrasted with prospective costs, which are future costs that may be avoided if action is taken.",
       sources: [
@@ -45,17 +45,17 @@ const SPINS: Spin[] = [
     },
   },
   {
-    category: { id: "space", title: "🚀 Космос и Вселенная" },
+    category: { id: "space", title: "🚀 Space and the Universe" },
     case: {
       id: "fermi_paradox",
-      title: "Парадокс Ферми (Fermi paradox)",
-      brief: "Объясни, почему мы до сих пор не встретили инопланетян, и убеди зал в своей версии ответа.",
+      title: "The Fermi Paradox",
+      brief: "Explain why we still haven't met aliens and convince the audience of your answer.",
       audience: "широкая публика",
       summary: "The Fermi paradox is the seeming inconsistency between the lack of evidence of extraterrestrial civilizations and the apparently high likelihood of their existence.",
       sources: [
         { title: "Wikipedia: Fermi paradox", url: "https://en.wikipedia.org/wiki/Fermi_paradox" },
         { title: "Britannica: Fermi paradox", url: "https://www.britannica.com/science/Fermi-paradox" },
-        { title: "Simple English Wikipedia: Fermi paradox (простой английский)", url: "https://simple.wikipedia.org/wiki/Fermi_paradox" },
+        { title: "Simple English Wikipedia: Fermi paradox (easy English)", url: "https://simple.wikipedia.org/wiki/Fermi_paradox" },
       ],
     },
   },
