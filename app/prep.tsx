@@ -11,17 +11,20 @@ import { colors, formatTime } from '@/ui/theme';
 
 export default function Prep() {
   useStayAwake();
-  const { user, mode, topic, round, notes, setRound, setNotes } = useGame();
+  const { user, mode, topic, ownPitch, round, notes, setRound, setNotes } = useGame();
   const [left, setLeft] = useState<number | null>(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
     if (!user || !topic || round) return;
+    const ownData =
+      ownPitch ??
+      (mode === 'own' ? { title: topic.title, text: topic.brief, audience: topic.audience } : undefined);
     api
-      .createRound(user.user_id, mode, topic.id)
+      .createRound(user.user_id, mode, mode === 'own' ? undefined : topic.id, ownData)
       .then(setRound)
       .catch((e: Error) => setError(`Раунд не создался: ${e.message}`));
-  }, [user, topic, round, mode, setRound]);
+  }, [user, topic, ownPitch, round, mode, setRound]);
 
   useEffect(() => {
     if (!round) return;

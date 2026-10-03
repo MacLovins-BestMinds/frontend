@@ -12,6 +12,8 @@ import type {
   JuryQuestion,
   LeaderboardEntry,
   Mode,
+  OwnPitchInput,
+  RefineResponse,
   Round,
   Spin,
   User,
@@ -71,10 +73,20 @@ export const api = {
 
   daily: () => (env.useMocks ? mocked(mocks.daily()) : request<Daily>('/api/game/daily')),
 
-  createRound: (userId: string, mode: Mode, caseId: string) =>
+  createRound: (userId: string, mode: Mode, caseId?: string, own?: OwnPitchInput) =>
     env.useMocks
       ? mocked(mocks.createRound())
-      : post<Round>('/api/game/rounds', { user_id: userId, mode, case_id: caseId }),
+      : post<Round>('/api/game/rounds', {
+          user_id: userId,
+          mode,
+          case_id: mode === 'own' ? undefined : caseId,
+          own: mode === 'own' ? own : undefined,
+        }),
+
+  refine: (text: string, audience: string, mode: 'structure' | 'improve') =>
+    env.useMocks
+      ? mocked(mocks.refine(mode))
+      : post<RefineResponse>('/api/ai/refine', { text, audience, mode }),
 
   delivery: async (roundId: string, audioUri: string | null, gaze: GazePoint[] = []) => {
     if (env.useMocks) return mocked(mocks.delivery());

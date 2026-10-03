@@ -71,8 +71,12 @@ export default function Menu() {
 
       <Card>
         <Label>Свой питч</Label>
-        <Body muted>Своя тема и текст, выбор аудитории. Скоро.</Body>
-        <Button title="Скоро" variant="secondary" disabled onPress={() => {}} />
+        <Body muted>Своя тема и текст, выбор аудитории. ИИ поможет со структурой.</Body>
+        <Button
+          title="Выступить со своим питчем"
+          variant="secondary"
+          onPress={() => router.push('/own' as any)}
+        />
       </Card>
     </Screen>
   );

@@ -70,3 +70,23 @@ export type Finish = {
 export type LeaderboardEntry = { nick: string; score: number };
 
 export type GazePoint = { t: number; on: boolean };
+
+export type AudienceId = 'contest_jury' | 'business' | 'teachers' | 'public';
+
+export type PitchBlock = {
+  kind: 'hook' | 'problem' | 'solution' | 'why_us' | 'call_to_action';
+  title: string;
+  text: string;
+};
+
+export type RefineResponse = {
+  text: string;
+  notes: string[];
+  blocks: PitchBlock[];
+};
+
+export type OwnPitchInput = {
+  title: string;
+  text: string;
+  audience: string;
+};
