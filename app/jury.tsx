@@ -1,10 +1,10 @@
-import { createAudioPlayer, type AudioPlayer } from 'expo-audio';
 import { Redirect, router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text } from 'react-native';
 
 import { api, mediaUrl } from '@/api/client';
 import type { JuryQuestion } from '@/api/types';
+import { playUrl, type Playback } from '@/audio/playback';
 import { useRecorder } from '@/audio/useRecorder';
 import { useGame } from '@/store/game';
 import { JuryTable } from '@/ui/AudienceStage';
@@ -24,8 +24,10 @@ export default function Jury() {
   const [left, setLeft] = useState(ANSWER_SEC);
   const [comment, setComment] = useState('');
   const [error, setError] = useState('');
-  const player = useRef<AudioPlayer | null>(null);
+  const player = useRef<Playback | null>(null);
   const answerUri = useRef<string | null>(null);
+  const sending = useRef(false);
+  const [audioBlocked, setAudioBlocked] = useState(false);
 
   const question = questions[index];
 
@@ -43,6 +45,12 @@ export default function Jury() {
 
   useEffect(load, [round]);
 
+  const playQuestion = (url: string) => {
+    player.current?.stop();
+    setAudioBlocked(false);
+    player.current = playUrl(url, () => setAudioBlocked(true));
+  };
+
   // член жюри «говорит»: проигрываем озвучку вопроса
   useEffect(() => {
     if (phase !== 'question' || !question?.audio_url) return;
@@ -51,20 +59,19 @@ export default function Jury() {
     // сначала проверяем, что mp3 существует: на AI_MOCK бэкенд отдаёт ссылку без файла
     fetch(url, { method: 'HEAD' })
       .then((res) => {
-        if (cancelled || !res.ok) return;
-        player.current = createAudioPlayer(url);
-        player.current.play();
+        if (!cancelled && res.ok) playQuestion(url);
       })
       .catch((e) => console.warn('Озвучка вопроса не проигралась', e));
     return () => {
       cancelled = true;
-      player.current?.remove();
+      player.current?.stop();
       player.current = null;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, question]);
 
   const startAnswer = async () => {
-    player.current?.pause();
+    player.current?.stop();
     answerUri.current = null;
     setLeft(ANSWER_SEC);
     setPhase('answering');
@@ -72,7 +79,9 @@ export default function Jury() {
   };
 
   const sendAnswer = async () => {
-    if (!round || !question) return;
+    // таймер на нуле и нажатие «Ответ готов» могут совпасть — отправляем один раз
+    if (!round || !question || sending.current) return;
+    sending.current = true;
     setPhase('sending');
     setError('');
     try {
@@ -82,9 +91,19 @@ export default function Jury() {
       setComment(`${answer.score} — ${answer.comment}`);
       setPhase('comment');
     } catch (e) {
-      setError(`Ответ не отправился: ${(e as Error).message}`);
-      setPhase('comment');
+      const message = (e as Error).message;
       setComment('');
+      if (message.startsWith('422')) {
+        // запись не читается — повторная отправка того же файла не поможет, записываем заново
+        answerUri.current = null;
+        setError('Запись ответа не получилась. Запиши ответ ещё раз.');
+        setPhase('question');
+      } else {
+        setError(`Ответ не отправился: ${message}`);
+        setPhase('comment');
+      }
+    } finally {
+      sending.current = false;
     }
   };
 
@@ -157,6 +176,13 @@ export default function Jury() {
       )}
       <ErrorText>{error}</ErrorText>
 
+      {phase === 'question' && audioBlocked && question?.audio_url && (
+        <Button
+          title="▶ Прослушать вопрос"
+          variant="secondary"
+          onPress={() => playQuestion(mediaUrl(question.audio_url))}
+        />
+      )}
       {phase === 'question' && <Button title="Ответить (до 30 секунд)" onPress={startAnswer} />}
       {(phase === 'answering' || phase === 'sending') && (
         <Button title="Ответ готов" loading={phase === 'sending'} onPress={sendAnswer} />

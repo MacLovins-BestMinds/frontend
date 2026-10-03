@@ -52,7 +52,9 @@ function post<T>(path: string, body?: unknown): Promise<T> {
 async function appendAudio(form: FormData, uri: string) {
   if (Platform.OS === 'web') {
     const blob = await (await fetch(uri)).blob();
-    form.append('audio', blob, 'audio.webm');
+    // Chrome пишет webm, Safari — mp4: имя файла по реальному типу записи
+    const ext = blob.type.includes('mp4') ? 'm4a' : blob.type.includes('ogg') ? 'ogg' : 'webm';
+    form.append('audio', blob, `audio.${ext}`);
   } else {
     // React Native кладёт файл в multipart по объекту с uri
     form.append('audio', { uri, name: 'audio.m4a', type: 'audio/mp4' } as unknown as Blob);
