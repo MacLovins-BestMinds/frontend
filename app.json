@@ -56,7 +56,8 @@
           }
         }
       ],
-      "expo-asset"
+      "expo-asset",
+      "./plugins/with-scene-lifecycle"
     ],
     "experiments": {
       "typedRoutes": true

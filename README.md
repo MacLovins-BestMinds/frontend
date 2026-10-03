@@ -30,5 +30,6 @@ npm run android
 | --- | --- |
 | `EXPO_PUBLIC_API_URL` | HTTPS-адрес бэкенда |
 | `EXPO_PUBLIC_USE_MOCKS` | `1` — моки, `0` — реальный API |
+| `APPLE_TEAM_ID` | Team ID для подписи iOS-сборки, свой у каждого |
 
-Читаются в `src/config/env.ts`.
+`EXPO_PUBLIC_*` читаются в `src/config/env.ts`, `APPLE_TEAM_ID` — в `app.config.js`.
