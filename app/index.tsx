@@ -67,12 +67,14 @@ function Headline({ size }: { size: number }) {
 export default function Landing() {
   const { wide, width } = useLayout();
   const user = useGame((s) => s.user);
-  const setUser = useGame((s) => s.setUser);
+  const signIn = useGame((s) => s.signIn);
   const scroll = useRef<ScrollView>(null);
   const anchors = useRef<Record<string, number>>({});
   const [finalHeight, setFinalHeight] = useState(0);
   const [loginOpen, setLoginOpen] = useState(false);
   const [nick, setNick] = useState('');
+  const [password, setPassword] = useState('');
+  const [creating, setCreating] = useState(false); // «создать аккаунт» вместо «войти»
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -86,15 +88,20 @@ export default function Landing() {
     setLoading(true);
     setError('');
     try {
-      setUser(await api.auth(nick.trim()));
+      const session = creating ? await api.register(nick.trim(), password) : await api.login(nick.trim(), password);
+      signIn(session.user, session.access_token);
       setLoginOpen(false);
+      setPassword('');
       router.push('/menu');
     } catch (e) {
-      setError(`Could not sign in: ${(e as Error).message}`);
+      const message = (e as Error).message.replace(/^\d+: /, '');
+      setError(creating ? `Could not create the account: ${message}` : `Could not sign in: ${message}`);
     } finally {
       setLoading(false);
     }
   };
+
+  const canEnter = nick.trim().length >= 2 && password.length >= 6;
 
   const cta = <TicketButton title="Start training" stubTop="entry" stubBottom="free" onPress={start} stretch={!wide} />;
 
@@ -266,12 +273,38 @@ export default function Landing() {
         <Pressable style={styles.backdrop} onPress={() => setLoginOpen(false)} accessibilityLabel="Close">
           <Pressable style={styles.loginWrap} onPress={() => {}}>
             <Card style={styles.login}>
-              <Label>Sign in</Label>
-              <H3>How should we announce you?</H3>
-              <Field placeholder="Your nickname" value={nick} onChangeText={setNick} autoCapitalize="none" autoCorrect={false} maxLength={50} autoFocus onSubmitEditing={() => nick.trim().length >= 2 && enter()} accessibilityLabel="Your nickname" />
+              <View style={styles.tabs}>
+                {[false, true].map((mode) => (
+                  <Pressable
+                    key={String(mode)}
+                    accessibilityRole="tab"
+                    accessibilityState={{ selected: creating === mode }}
+                    onPress={() => (setCreating(mode), setError(''))}
+                    style={[styles.tab, creating === mode && styles.tabOn]}>
+                    <Text style={[styles.tabText, creating === mode && styles.tabTextOn]}>{mode ? 'Create account' : 'Sign in'}</Text>
+                  </Pressable>
+                ))}
+              </View>
+              <H3>{creating ? 'How should we announce you?' : 'Welcome back'}</H3>
+              <Field placeholder="Nickname" value={nick} onChangeText={setNick} autoCapitalize="none" autoCorrect={false} maxLength={50} autoFocus accessibilityLabel="Nickname" />
+              <Field
+                placeholder={creating ? 'Password, at least 6 characters' : 'Password'}
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry
+                autoCapitalize="none"
+                autoCorrect={false}
+                maxLength={100}
+                onSubmitEditing={() => canEnter && enter()}
+                accessibilityLabel="Password"
+              />
               <ErrorText>{error}</ErrorText>
-              <Button title="Step out" onPress={enter} disabled={nick.trim().length < 2} loading={loading} />
-              <Small>No password needed: this nickname will show on the leaderboard.</Small>
+              <Button title={creating ? 'Create account' : 'Step out'} onPress={enter} disabled={!canEnter} loading={loading} />
+              <Small>
+                {creating
+                  ? 'Your nickname shows on the leaderboard. Played before without a password? Use the same nickname — your rounds stay with you.'
+                  : 'Your rounds, rank and progress are kept in your account.'}
+              </Small>
             </Card>
           </Pressable>
         </Pressable>
@@ -333,4 +366,9 @@ const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'rgba(22,20,24,0.6)', alignItems: 'center', justifyContent: 'center', padding: 20 },
   loginWrap: { width: '100%', maxWidth: 420 },
   login: { gap: 14 },
+  tabs: { flexDirection: 'row', alignSelf: 'flex-start', borderRadius: 999, padding: 3, backgroundColor: c.cream, ...outline },
+  tab: { paddingHorizontal: 16, minHeight: 38, justifyContent: 'center', borderRadius: 999 },
+  tabOn: { backgroundColor: c.ink },
+  tabText: { fontFamily: font.bold, fontSize: 14, color: c.ink },
+  tabTextOn: { color: c.orange },
 });

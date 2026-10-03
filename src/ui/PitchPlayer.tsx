@@ -10,14 +10,6 @@ import { PlayIcon } from './decor';
 export type PitchPlayerHandle = { playFrom: (seconds: number) => void };
 export type PlayerMark = { t: number; color: string };
 
-type Props = {
-  uri: string;
-  fallbackDuration: number;
-  marks: PlayerMark[];
-  /** Где сейчас запись и играет ли она — по этому за плеером идёт видео. */
-  onTime?: (seconds: number, playing: boolean) => void;
-};
-
 const THUMB = 22;
 
 const clock = (sec: number) => {
@@ -25,23 +17,87 @@ const clock = (sec: number) => {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 };
 
-/**
- * Плеер записи питча: дорожка с маркерами событий, заливка до текущего места и ползунок.
- * По дорожке можно нажать или вести пальцем — запись перематывается туда.
- */
-export const PitchPlayer = forwardRef<PitchPlayerHandle, Props>(function PitchPlayer({ uri, fallbackDuration, marks, onTime }, ref) {
-  const player = useAudioPlayer(uri, { updateInterval: 100 });
-  const status = useAudioPlayerStatus(player);
-  const real = useRealDuration(uri);
-  const duration = real ?? (Number.isFinite(status.duration) && status.duration > 0 ? status.duration : fallbackDuration);
+type BarProps = {
+  playing: boolean;
+  /** Место в записи и её длина, секунды. */
+  position: number;
+  duration: number;
+  marks: PlayerMark[];
+  onToggle: () => void;
+  /** Перемотать; пока обещание не выполнится, ползунок держится там, куда его привели. */
+  onSeek: (seconds: number) => Promise<unknown> | void;
+};
 
+/**
+ * Панель плеера: кнопка, дорожка с маркерами событий, заливка до текущего места и ползунок.
+ * По дорожке можно нажать или вести пальцем — запись перематывается туда. Что именно играет (звук или видео),
+ * панель не знает.
+ */
+export function PlayerBar({ playing, position, duration, marks, onToggle, onSeek }: BarProps) {
   // пока палец ведёт ползунок, показываем его место, а не место плеера
   const [scrub, setScrub] = useState<number | null>(null);
   const track = useRef<View>(null);
   const box = useRef({ left: 0, width: 1 });
+  const shown = Math.min(scrub ?? position, duration);
+  const progress = duration > 0 ? shown / duration : 0;
 
-  const position = Math.min(scrub ?? status.currentTime ?? 0, duration);
-  const progress = duration > 0 ? position / duration : 0;
+  const measure = () => track.current?.measureInWindow((left, _top, width) => (box.current = { left, width: Math.max(1, width) }));
+  const at = (e: GestureResponderEvent) => {
+    const ratio = (e.nativeEvent.pageX - box.current.left) / box.current.width;
+    return Math.max(0, Math.min(1, ratio)) * duration;
+  };
+
+  return (
+    <View style={styles.player}>
+      <Pressable accessibilityRole="button" accessibilityLabel={playing ? 'Pause' : 'Play the recording'} onPress={onToggle} style={styles.play}>
+        {playing ? <View style={styles.pause} /> : <PlayIcon />}
+      </Pressable>
+      <View
+        ref={track}
+        style={styles.hit}
+        onLayout={measure}
+        accessibilityRole="adjustable"
+        accessibilityLabel="Position in the recording"
+        accessibilityValue={{ min: 0, max: Math.round(duration), now: Math.round(shown) }}
+        onStartShouldSetResponder={() => true}
+        onMoveShouldSetResponder={() => true}
+        onResponderTerminationRequest={() => false}
+        onResponderGrant={(e) => {
+          measure();
+          setScrub(at(e));
+        }}
+        onResponderMove={(e) => setScrub(at(e))}
+        onResponderRelease={(e) => {
+          // держим ползунок на месте, пока плеер не перемотает, иначе он дёрнется назад
+          Promise.resolve(onSeek(at(e))).finally(() => setScrub(null));
+        }}
+        onResponderTerminate={() => setScrub(null)}
+      >
+        <View style={styles.rail} pointerEvents="none">
+          <View style={[styles.fill, { width: `${progress * 100}%` }]} />
+        </View>
+        {duration > 0 &&
+          marks.map((m, i) => (
+            <View key={i} pointerEvents="none" style={[styles.mark, { left: `${Math.min(100, (m.t / duration) * 100)}%`, backgroundColor: m.color }]} />
+          ))}
+        <View pointerEvents="none" style={[styles.thumb, scrub !== null && styles.thumbActive, { left: `${progress * 100}%` }]} />
+      </View>
+      <Text style={styles.time}>
+        {clock(shown)} / {clock(duration)}
+      </Text>
+    </View>
+  );
+}
+
+type Props = { uri: string; fallbackDuration: number; marks: PlayerMark[] };
+
+/** Плеер звукозаписи питча — когда видео нет (в приложении или без камеры). */
+export const PitchPlayer = forwardRef<PitchPlayerHandle, Props>(function PitchPlayer({ uri, fallbackDuration, marks }, ref) {
+  const player = useAudioPlayer(uri, { updateInterval: 100 });
+  const status = useAudioPlayerStatus(player);
+  const real = useRealDuration(uri);
+  const duration = real ?? (Number.isFinite(status.duration) && status.duration > 0 ? status.duration : fallbackDuration);
+  const position = Math.min(status.currentTime ?? 0, duration);
 
   const seek = async (seconds: number) => {
     try {
@@ -50,12 +106,6 @@ export const PitchPlayer = forwardRef<PitchPlayerHandle, Props>(function PitchPl
       console.warn('Seek failed', e);
     }
   };
-
-  useEffect(() => {
-    onTime?.(position, status.playing);
-    // сообщаем только о смене места и состояния
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [position, status.playing]);
 
   useImperativeHandle(ref, () => ({
     playFrom: (seconds) => {
@@ -75,53 +125,7 @@ export const PitchPlayer = forwardRef<PitchPlayerHandle, Props>(function PitchPl
     else player.play();
   };
 
-  const measure = () => track.current?.measureInWindow((left, _top, width) => (box.current = { left, width: Math.max(1, width) }));
-  const at = (e: GestureResponderEvent) => {
-    const ratio = (e.nativeEvent.pageX - box.current.left) / box.current.width;
-    return Math.max(0, Math.min(1, ratio)) * duration;
-  };
-
-  return (
-    <View style={styles.player}>
-      <Pressable accessibilityRole="button" accessibilityLabel={status.playing ? 'Pause' : 'Play the recording'} onPress={toggle} style={styles.play}>
-        {status.playing ? <View style={styles.pause} /> : <PlayIcon />}
-      </Pressable>
-      <View
-        ref={track}
-        style={styles.hit}
-        onLayout={measure}
-        accessibilityRole="adjustable"
-        accessibilityLabel="Position in the recording"
-        accessibilityValue={{ min: 0, max: Math.round(duration), now: Math.round(position) }}
-        onStartShouldSetResponder={() => true}
-        onMoveShouldSetResponder={() => true}
-        onResponderTerminationRequest={() => false}
-        onResponderGrant={(e) => {
-          measure();
-          setScrub(at(e));
-        }}
-        onResponderMove={(e) => setScrub(at(e))}
-        onResponderRelease={(e) => {
-          const target = at(e);
-          // держим ползунок на месте, пока плеер не перемотает, иначе он дёрнется назад
-          seek(target).finally(() => setScrub(null));
-        }}
-        onResponderTerminate={() => setScrub(null)}
-      >
-        <View style={styles.rail} pointerEvents="none">
-          <View style={[styles.fill, { width: `${progress * 100}%` }]} />
-        </View>
-        {duration > 0 &&
-          marks.map((m, i) => (
-            <View key={i} pointerEvents="none" style={[styles.mark, { left: `${Math.min(100, (m.t / duration) * 100)}%`, backgroundColor: m.color }]} />
-          ))}
-        <View pointerEvents="none" style={[styles.thumb, scrub !== null && styles.thumbActive, { left: `${progress * 100}%` }]} />
-      </View>
-      <Text style={styles.time}>
-        {clock(position)} / {clock(duration)}
-      </Text>
-    </View>
-  );
+  return <PlayerBar playing={status.playing} position={position} duration={duration} marks={marks} onToggle={toggle} onSeek={seek} />;
 });
 
 const styles = StyleSheet.create({

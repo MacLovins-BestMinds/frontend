@@ -15,7 +15,6 @@ import { Button, Card, Chip, Container, ErrorText, H1, H3, Label, Muted, P, Page
 export default function Menu() {
   const { wide } = useLayout();
   const user = useGame((s) => s.user);
-  const setUser = useGame((s) => s.setUser);
   const startTopic = useGame((s) => s.startTopic);
   const [daily, setDaily] = useState<{ date: string; topic: Case } | null>(null);
   const [leaders, setLeaders] = useState<LeaderboardEntry[]>([]);
@@ -45,14 +44,14 @@ export default function Menu() {
   const audience = daily ? findAudience(daily.topic.audience)?.name ?? daily.topic.audience : '';
 
   const rankCard = (
-    <View style={[styles.rank, wide ? styles.rankWide : styles.rankNarrow]}>
+    <Pressable accessibilityRole="link" accessibilityLabel="Your profile and progress" onPress={() => router.push('/profile')} style={[styles.rank, wide ? styles.rankWide : styles.rankNarrow]}>
       <View style={styles.rankText}>
         <Label style={styles.rankLabel}>Rank</Label>
         <Text style={[styles.rankTitle, !wide && { fontSize: 16, lineHeight: 21 }]}>{rank.title}</Text>
-        {wide && <Small style={styles.rankNote}>{average === null ? 'no rounds yet' : `average over ${rounds.length} ${plural(rounds.length)}: ${average}`}</Small>}
+        {wide && <Small style={styles.rankNote}>{average === null ? 'no rounds yet' : `average over ${rounds.length} ${plural(rounds.length)}: ${average}`} · see progress</Small>}
       </View>
       <TrendArrow trend={rank.trend} size={wide ? 44 : 22} />
-    </View>
+    </Pressable>
   );
 
   const training = (
@@ -128,7 +127,7 @@ export default function Menu() {
     <Page>
       {wide ? (
         <AppHeader>
-          <Pressable accessibilityRole="button" accessibilityLabel="Change nickname" onPress={() => (setUser(null), router.replace('/'))}>
+          <Pressable accessibilityRole="link" accessibilityLabel="Your profile and progress" onPress={() => router.push('/profile')}>
             <NickChip nick={user.nick} />
           </Pressable>
         </AppHeader>

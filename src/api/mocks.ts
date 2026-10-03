@@ -2,6 +2,7 @@
 // The answers mirror ?mock=1 on the backend.
 
 import type {
+  AuthSession,
   Daily,
   Delivery,
   Finish,
@@ -9,7 +10,9 @@ import type {
   JuryQuestion,
   LeaderboardEntry,
   Profile,
+  Progress,
   RefineResponse,
+  RoundReview,
   Round,
   Spin,
   User,
@@ -64,11 +67,71 @@ const REFINE_BLOCKS: RefineResponse['blocks'] = [
 const render = (blocks: RefineResponse['blocks']) => blocks.map((b) => `${b.title}: ${b.text}`).join('\n');
 
 export const mocks = {
-  auth: (nick: string): User => ({
-    user_id: 'u_mock',
-    nick,
-    rank: { title: 'Novice', trend: 'flat' },
+  session: (nick: string): AuthSession => ({
+    access_token: 'mock-token',
+    user: { user_id: 'u_mock', nick, rank: { title: 'Pitcher', trend: 'up' } },
   }),
+
+  progress: (): Progress => {
+    const titles = ['My Favourite Food', 'Cats or Dogs', 'Why You Should Visit My City', 'My Morning', 'A Film Everyone Should Watch', 'My Superpower', 'Drink More Water', 'My Hobby'];
+    const totals = [74, 71, 69, 72, 64, 61, 55, 52];
+    const day = 24 * 3600 * 1000;
+    const history = totals.map((total, i) => ({
+      id: `rnd_mock_${i}`,
+      mode: i === 2 ? 'daily' : 'training',
+      title: titles[i],
+      created_at: new Date(Date.now() - i * day).toISOString(),
+      total,
+      content: total + 3,
+      delivery: total - 4,
+      jury: total + 2,
+      duration_sec: 95 + i * 4,
+      wpm: 168 - i * 3,
+      fillers_per_min: 1.8 + i * 0.5,
+      long_pauses: i % 3,
+      repeats: 1 + (i % 4),
+      gaze_on_ratio: null,
+    }));
+    return {
+      nick: 'tester',
+      rank: { title: 'Pitcher', trend: 'up' },
+      rank_score: 70,
+      next_rank: { title: 'Orator', points_needed: 5 },
+      rounds_total: history.length,
+      minutes_total: 14.2,
+      average: 64.8,
+      best: 74,
+      streak_days: 8,
+      skills: [
+        { key: 'content', title: 'Content', value: 73, delta: 6.4, better: 'higher', unit: '' },
+        { key: 'delivery', title: 'Delivery', value: 66, delta: 3.1, better: 'higher', unit: '' },
+        { key: 'jury', title: 'Jury answers', value: 72, delta: -1.2, better: 'higher', unit: '' },
+      ],
+      habits: [
+        { key: 'fillers_per_min', title: 'Filler words', value: 2.8, delta: -1.9, better: 'lower', unit: 'per min' },
+        { key: 'wpm', title: 'Pace', value: 162, delta: 9, better: 'range', unit: 'words/min' },
+        { key: 'long_pauses', title: 'Long pauses', value: 1, delta: 0, better: 'lower', unit: 'per pitch' },
+        { key: 'repeats', title: 'Repeats', value: 2.4, delta: -0.6, better: 'lower', unit: 'per pitch' },
+      ],
+      insights: [
+        { kind: 'good', title: 'Your strong side: content', text: '73 on average over your last rounds.' },
+        { kind: 'focus', title: 'Work on: delivery', text: '66 on average. Slow down at the start and keep a steady pace — delivery is where you lose the most points.' },
+        { kind: 'good', title: 'Fewer filler words', text: 'Down to 2.8 per minute from 4.7. Keep replacing them with a short pause.' },
+      ],
+      history,
+    };
+  },
+
+  roundReview: (roundId: string): RoundReview => {
+    const round = mocks.progress().history.find((r) => r.id === roundId) ?? mocks.progress().history[0];
+    return {
+      round,
+      result: { total: round.total, content: round.content, delivery: round.delivery, jury: round.jury, rank: { title: 'Pitcher', trend: 'up' } },
+      delivery: mocks.delivery(),
+      jury_questions: mocks.juryQuestions(),
+      jury_answers: mocks.juryQuestions().map((q) => ({ ...mocks.juryAnswer(), question_id: q.id })),
+    };
+  },
 
   spin: (): Spin => SPINS[spinIndex++ % SPINS.length],
 

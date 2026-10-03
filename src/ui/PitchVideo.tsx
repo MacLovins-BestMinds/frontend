@@ -1,15 +1,18 @@
+import { forwardRef } from 'react';
+
+import type { PitchPlayerHandle, PlayerMark } from './PitchPlayer';
+
 export type PitchVideoProps = {
   uri: string;
-  /** На сколько секунд видео началось позже звука. */
+  /** На сколько секунд видео началось позже раунда: время раунда = время видео + offset. */
   offset: number;
-  /** Место в записи (секунды раунда) и играет ли она — видео идёт за плеером. */
-  time: number;
-  playing: boolean;
-  /** Подпись поверх кадра — например, что в этот момент взгляд ушёл из зала. */
-  note?: string;
+  fallbackDuration: number;
+  marks: PlayerMark[];
+  /** Подписи поверх кадра на отрезках раунда — например, когда взгляд ушёл из зала. */
+  notes?: { from: number; to: number; text: string }[];
 };
 
 /** Видеозапись выступления. В приложении её пока нет (камера не подключена) — показывать нечего. */
-export function PitchVideo(_props: PitchVideoProps) {
+export const PitchVideo = forwardRef<PitchPlayerHandle, PitchVideoProps>(function PitchVideo() {
   return null;
-}
+});
