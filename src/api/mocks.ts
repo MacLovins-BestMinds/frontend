@@ -1,5 +1,5 @@
-// Локальные моки для EXPO_PUBLIC_USE_MOCKS=1: приложение работает без бэкенда.
-// Ответы повторяют ?mock=1 на бэкенде.
+// Local mocks for EXPO_PUBLIC_USE_MOCKS=1: the app works without a backend.
+// The answers mirror ?mock=1 on the backend.
 
 import type {
   Daily,
@@ -8,6 +8,7 @@ import type {
   JuryAnswer,
   JuryQuestion,
   LeaderboardEntry,
+  Profile,
   RefineResponse,
   Round,
   Spin,
@@ -16,58 +17,57 @@ import type {
 
 const SPINS: Spin[] = [
   {
-    category: { id: "philosophy", title: "🏛 Philosophy for Life" },
+    category: { id: 'food', title: '🍕 Food' },
     case: {
-      id: "stoicism",
-      title: "Stoicism",
-      brief: "Explain in simple words what Stoicism is and convince teachers it's worth discussing with students.",
-      audience: "преподаватели",
-      summary: "Stoicism is a philosophical movement and practical guide to living, emphasizing daily self-discipline and moral improvement, which originated in the Hellenistic period of ancient Greece and continued well into the Roman Imperial period.",
-      sources: [
-        { title: "Wikipedia: Stoicism", url: "https://en.wikipedia.org/wiki/Stoicism" },
-        { title: "Britannica: Stoicism", url: "https://www.britannica.com/topic/Stoicism" },
-        { title: "Simple English Wikipedia: Stoicism (easy English)", url: "https://simple.wikipedia.org/wiki/Stoicism" },
-      ],
+      id: 'favourite_food',
+      title: 'My Favourite Food',
+      brief: 'Tell the room about the food you love most and make them hungry.',
+      audience: 'general public',
+      summary: 'Say what the food is, describe how it tastes, tell when you last had it, and finish with why everybody should try it.',
+      sources: [],
     },
   },
   {
-    category: { id: "thinking_traps", title: "🧠 Thinking Traps" },
+    category: { id: 'animals', title: '🐶 Animals' },
     case: {
-      id: "sunk_cost",
-      title: "The Sunk Cost Fallacy",
-      brief: "Explain the sunk cost trap with an example and convince business people to shut down failing projects in time.",
-      audience: "бизнесмены",
-      summary: "In economics and business decision-making, a sunk cost is a cost that has already been incurred and cannot be recovered. Sunk costs are contrasted with prospective costs, which are future costs that may be avoided if action is taken.",
-      sources: [
-        { title: "Wikipedia: Sunk cost", url: "https://en.wikipedia.org/wiki/Sunk_cost" },
-        { title: "Investopedia: Sunk cost", url: "https://www.investopedia.com/terms/s/sunkcost.asp" },
-      ],
+      id: 'cats_or_dogs',
+      title: 'Cats or Dogs',
+      brief: 'Pick a side — cats or dogs — and convince the room you are right.',
+      audience: 'general public',
+      summary: 'Say your choice first, give three simple reasons, tell one funny story, and finish with a clear last line.',
+      sources: [],
     },
   },
   {
-    category: { id: "space", title: "🚀 Space and the Universe" },
+    category: { id: 'travel', title: '✈️ Travel' },
     case: {
-      id: "fermi_paradox",
-      title: "The Fermi Paradox",
-      brief: "Explain why we still haven't met aliens and convince the audience of your answer.",
-      audience: "широкая публика",
-      summary: "The Fermi paradox is the seeming inconsistency between the lack of evidence of extraterrestrial civilizations and the apparently high likelihood of their existence.",
-      sources: [
-        { title: "Wikipedia: Fermi paradox", url: "https://en.wikipedia.org/wiki/Fermi_paradox" },
-        { title: "Britannica: Fermi paradox", url: "https://www.britannica.com/science/Fermi-paradox" },
-        { title: "Simple English Wikipedia: Fermi paradox (easy English)", url: "https://simple.wikipedia.org/wiki/Fermi_paradox" },
-      ],
+      id: 'visit_my_city',
+      title: 'Why You Should Visit My City',
+      brief: 'Convince the room to spend a weekend in your city or town.',
+      audience: 'general public',
+      summary: 'Start with one thing your city is known for, add two places to see and one thing to eat, and finish with an invitation.',
+      sources: [],
     },
   },
 ];
 
 let spinIndex = 0;
 
+const REFINE_BLOCKS: RefineResponse['blocks'] = [
+  { kind: 'hook', title: 'Hook', text: "Imagine your grandmother can't remember if she took her pill." },
+  { kind: 'problem', title: 'Problem', text: 'Older people miss their medicine every day.' },
+  { kind: 'solution', title: 'Solution', text: 'A smart pill box that beeps and notifies the family.' },
+  { kind: 'why_us', title: 'Why us', text: 'A pilot in three pharmacies, two hundred families in a month.' },
+  { kind: 'call_to_action', title: 'Call to action', text: "We're looking for pharmacy chains as partners." },
+];
+
+const render = (blocks: RefineResponse['blocks']) => blocks.map((b) => `${b.title}: ${b.text}`).join('\n');
+
 export const mocks = {
   auth: (nick: string): User => ({
     user_id: 'u_mock',
     nick,
-    rank: { title: 'Новичок', trend: 'flat' },
+    rank: { title: 'Novice', trend: 'flat' },
   }),
 
   spin: (): Spin => SPINS[spinIndex++ % SPINS.length],
@@ -81,25 +81,43 @@ export const mocks = {
     pitch_max_sec: 180,
   }),
 
+  refine: (mode: 'structure' | 'improve'): RefineResponse => {
+    if (mode === 'structure') {
+      return {
+        text: render(REFINE_BLOCKS),
+        notes: ['The text is sorted into five blocks; your words are almost unchanged.'],
+        blocks: REFINE_BLOCKS,
+      };
+    }
+    const blocks = REFINE_BLOCKS.map((b) =>
+      b.kind === 'problem' ? { ...b, text: 'Older people miss [what share] of their doses — and end up in hospital.' } : b,
+    );
+    return {
+      text: render(blocks),
+      notes: [
+        'Weak spot: there is no number for the size of the problem — business people have nothing to hold on to.',
+        'Weak spot: you never say how much the device costs.',
+        'Changed: the problem is tied to its consequences, with a placeholder left for the number.',
+      ],
+      blocks,
+    };
+  },
+
   delivery: (): Delivery => ({
     transcript:
-      'Представьте: бабушка в восемь утра не помнит, выпила ли она таблетку от давления. ' +
-      'Ну, это происходит каждый день с миллионами пожилых людей. ' +
-      'Мы сделали умную таблетницу: она пищит, светится и присылает родственникам уведомление, ' +
-      'если ячейка не открылась вовремя. Пилот в трёх аптеках, двести семей за месяц. ' +
-      'Нам нужны партнёры среди аптечных сетей — давайте поговорим после выступления.',
+      "Imagine it's eight in the morning and your grandmother can't remember if she took her blood pressure pill. " +
+      'Um, this happens every day to millions of older people. ' +
+      "We built a smart pill box: it beeps, lights up and notifies the family if the box isn't opened on time. " +
+      'A pilot in three pharmacies, in three pharmacies, two hundred families in a month. ' +
+      "We're looking for pharmacy chains as partners — let's talk after the pitch.",
     scores: {
       content: {
         total: 72,
         criteria: [
-          { name: 'topic', score: 85, quote: 'Мы сделали умную таблетницу' },
-          { name: 'structure', score: 70, quote: 'Нам нужны партнёры среди аптечных сетей' },
-          {
-            name: 'clarity',
-            score: 75,
-            quote: 'она пищит, светится и присылает родственникам уведомление',
-          },
-          { name: 'persuasion', score: 60, quote: 'Пилот в трёх аптеках, двести семей за месяц' },
+          { name: 'topic', score: 85, quote: 'We built a smart pill box' },
+          { name: 'structure', score: 70, quote: "We're looking for pharmacy chains as partners" },
+          { name: 'clarity', score: 75, quote: 'it beeps, lights up and notifies the family' },
+          { name: 'persuasion', score: 60, quote: 'A pilot in three pharmacies, two hundred families in a month' },
         ],
       },
       delivery: { total: 78, fillers: 85, pace: 100, gaze: 70, pauses: 90, timing: 100 },
@@ -114,42 +132,29 @@ export const mocks = {
       gaze_on_ratio: 0.64,
     },
     events: [
-      { type: 'filler', t: 8.2, text: '«ну»' },
-      { type: 'gaze_off', t: 31.0, text: 'Взгляд мимо зала 4 секунды' },
-      { type: 'long_pause', t: 52.4, text: 'Пауза 3.6 секунды посреди фразы' },
-      { type: 'good_pause', t: 70.1, text: 'Удачная пауза перед цифрами' },
+      { type: 'filler', t: 8.2, text: '«um»', start: 107, end: 109 },
+      { type: 'gaze_off', t: 31.0, text: 'Looking away for 4 s', start: 166, end: 166 },
+      { type: 'long_pause', t: 52.4, text: 'Pause of 3.6 s mid-phrase', start: 233, end: 233 },
+      { type: 'repeat', t: 66.0, text: 'Repeated: «in three pharmacies»', start: 296, end: 315 },
+      { type: 'pace', t: 78.0, text: 'Pace 196 words/min — too fast', start: 350, end: 350 },
     ],
     tips: [
-      'Начни с цифры: сколько приёмов лекарств пропускают пожилые.',
-      'Смотри в телефон, когда называешь результаты пилота — это самый сильный момент.',
-      'Замени «ну» короткой паузой.',
+      'Open with a number: how many doses older people miss.',
+      'Look at the screen when you give the pilot results — it is your strongest moment.',
+      'Replace "um" with a short pause.',
     ],
   }),
 
+  // one question from each jury member, in table order
   juryQuestions: (): JuryQuestion[] => [
-    {
-      id: 'q1',
-      juror: 'strict',
-      text: 'А если бабушка не пользуется смартфоном, кто получит уведомление?',
-      audio_url: '',
-    },
-    {
-      id: 'q2',
-      juror: 'kind',
-      text: 'Двести семей за месяц — сколько из них остались с вами?',
-      audio_url: '',
-    },
-    {
-      id: 'q3',
-      juror: 'skeptic',
-      text: 'Сколько стоит таблетница и кто за неё платит?',
-      audio_url: '',
-    },
+    { id: 'q1', juror: 'strict', text: 'How much does the pill box cost, and who pays for it?', audio_url: '' },
+    { id: 'q2', juror: 'kind', text: 'Two hundred families in a month — how many of them stayed with you?', audio_url: '' },
+    { id: 'q3', juror: 'skeptic', text: "What if grandma doesn't use a smartphone — who gets the notification?", audio_url: '' },
   ],
 
   juryAnswer: (): JuryAnswer => ({
     score: 68,
-    comment: 'По существу, но не хватило конкретной цифры.',
+    comment: 'To the point, but a concrete number was missing.',
   }),
 
   finish: (): Finish => ({
@@ -157,7 +162,7 @@ export const mocks = {
     content: 70,
     delivery: 80,
     jury: 80,
-    rank: { title: 'Оратор', trend: 'up' },
+    rank: { title: 'Orator', trend: 'up' },
   }),
 
   leaderboard: (): LeaderboardEntry[] => [
@@ -165,50 +170,11 @@ export const mocks = {
     { nick: 'maria', score: 79 },
   ],
 
-  refine: (mode: 'structure' | 'improve'): RefineResponse => ({
-    text:
-      'Представьте, что 70% стартапов тратят месяцы на поиск первых клиентов вслепую.\n\n' +
-      'Проблема: Основатели не умеют быстро тестировать гипотезы и сливают бюджет.\n\n' +
-      'Решение: Наш сервис автоматически находит целевую аудиторию и собирает обратную связь за 24 часа.\n\n' +
-      'Почему мы: Уже 40 команд закрыли первые продажи в первый же месяц работы.\n\n' +
-      'Призыв: Давайте подключим ваш проект к закрытой бете прямо сегодня.',
-    notes:
-      mode === 'structure'
-        ? [
-            'Текст чётко структурирован по пяти классическим блокам питча.',
-            'Сохранены все ключевые мысли автора, улучшена связность переходов.',
-          ]
-        : [
-            'Добавлен конкретный хук с понятной цифрой в начале.',
-            'Усилена аргументация в блоке «Почему мы» (указаны первые результаты).',
-            'Сформулирован чёткий призыв к действию в конце.',
-          ],
-    blocks: [
-      {
-        kind: 'hook',
-        title: 'Хук',
-        text: 'Представьте, что 70% стартапов тратят месяцы на поиск первых клиентов вслепую.',
-      },
-      {
-        kind: 'problem',
-        title: 'Проблема',
-        text: 'Основатели не умеют быстро тестировать гипотезы и сливают бюджет.',
-      },
-      {
-        kind: 'solution',
-        title: 'Решение',
-        text: 'Наш сервис автоматически находит целевую аудиторию и собирает обратную связь за 24 часа.',
-      },
-      {
-        kind: 'why_us',
-        title: 'Почему мы',
-        text: 'Уже 40 команд закрыли первые продажи в первый же месяц работы.',
-      },
-      {
-        kind: 'call_to_action',
-        title: 'Призыв к действию',
-        text: 'Давайте подключим ваш проект к закрытой бете прямо сегодня.',
-      },
+  profile: (): Profile => ({
+    nick: 'tester',
+    rank: { title: 'Orator', trend: 'up' },
+    last_rounds: [
+      { id: 'rnd_mock_1', mode: 'training', total: 75.5, content: 70, delivery: 80, jury: 80, created_at: new Date().toISOString() },
     ],
   }),
 };

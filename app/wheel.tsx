@@ -1,41 +1,36 @@
 import { Redirect, router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
-import Animated, {
-  Easing,
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
-} from 'react-native-reanimated';
+import { StyleSheet, View } from 'react-native';
+import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Svg, { Path } from 'react-native-svg';
 
 import { api } from '@/api/client';
 import type { Spin } from '@/api/types';
-import { useGame } from '@/store/game';
-import { Body, Button, Card, ErrorText, Label, Screen, Title } from '@/ui/kit';
 import { findAudience } from '@/content/audiences';
-import { colors } from '@/ui/theme';
+import { c } from '@/design/theme';
+import { useLayout } from '@/hooks/useLayout';
+import { useGame } from '@/store/game';
+import { AppHeader } from '@/ui/AppHeader';
+import { TicketButton, Wheel } from '@/ui/decor';
+import { Button, Card, Container, ErrorText, H1, H3, Label, Muted, Page } from '@/ui/primitives';
 
 const SPIN_MS = 1400;
-
 type Phase = 'idle' | 'category' | 'case' | 'done';
 
-export default function Wheel() {
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+export default function WheelScreen() {
+  const { wide } = useLayout();
   const user = useGame((s) => s.user);
   const startTopic = useGame((s) => s.startTopic);
   const [spin, setSpin] = useState<Spin | null>(null);
   const [phase, setPhase] = useState<Phase>('idle');
   const [error, setError] = useState('');
   const turns = useSharedValue(0);
-
-  const wheelStyle = useAnimatedStyle(() => ({
-    transform: [{ rotate: `${turns.value * 360}deg` }],
-  }));
+  const wheelStyle = useAnimatedStyle(() => ({ transform: [{ rotate: `${turns.value * 360}deg` }] }));
 
   const rotate = () => {
-    turns.value = withTiming(turns.value + 3, {
-      duration: SPIN_MS,
-      easing: Easing.out(Easing.cubic),
-    });
+    turns.value = withTiming(turns.value + 3 + Math.random(), { duration: SPIN_MS, easing: Easing.out(Easing.cubic) });
   };
 
   // две прокрутки подряд: категория → кейс
@@ -52,77 +47,82 @@ export default function Wheel() {
       await wait(SPIN_MS);
       setPhase('done');
     } catch (e) {
-      setError(`Колесо не прокрутилось: ${(e as Error).message}`);
+      setError(`The wheel did not spin: ${(e as Error).message}`);
       setPhase('idle');
     }
   };
 
   useEffect(() => {
     run();
+    // крутим один раз при входе
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (!user) return <Redirect href="/" />;
 
   const spinning = phase === 'category' || phase === 'case';
+  const ready = phase === 'done' && spin;
+  const audience = spin ? findAudience(spin.case.audience) : undefined;
+  const size = wide ? 380 : 250;
 
   return (
-    <Screen>
-      <Title>Колесо</Title>
-      <View style={styles.wheelBox}>
-        <Animated.View style={[styles.wheel, wheelStyle]}>
-          <Text style={styles.wheelFace}>🎡</Text>
-        </Animated.View>
-      </View>
-
-      <Card>
-        <Label>Категория</Label>
-        <Body>{spin ? spin.category.title : 'Кручу…'}</Body>
-      </Card>
-      <Card>
-        <Label>Что питчишь</Label>
-        <Body>{phase === 'done' && spin ? spin.case.title : spinning ? 'Кручу…' : '—'}</Body>
-        {phase === 'done' && spin && <AudienceLine value={spin.case.audience} />}
-      </Card>
-
-      <ErrorText>{error}</ErrorText>
-      <Button
-        title="Беру эту тему"
-        disabled={phase !== 'done' || !spin}
-        onPress={() => {
-          if (!spin) return;
-          startTopic('training', spin.case);
-          router.push('/prep');
-        }}
-      />
-      <Button title="Крутить ещё" variant="secondary" disabled={spinning} onPress={run} />
-      <Button title="В меню" variant="secondary" onPress={() => router.replace('/menu')} />
-    </Screen>
+    <Page>
+      <AppHeader>
+        <Button title="Menu" variant="secondary" size="sm" onPress={() => router.replace('/menu')} />
+      </AppHeader>
+      <Container style={[styles.main, wide && styles.mainWide]}>
+        <View style={[styles.wheelBox, wide && styles.wheelBoxWide]}>
+          <Svg width={34} height={38} viewBox="0 0 28 32" style={styles.pointer}>
+            <Path d="M14 30 L2 2 H26 Z" fill={c.ink} stroke={c.ink} strokeWidth={3} strokeLinejoin="round" />
+          </Svg>
+          <Animated.View style={wheelStyle}>
+            <Wheel size={size} pointer={false} />
+          </Animated.View>
+        </View>
+        <View style={styles.side}>
+          <H1 style={!wide && styles.titleNarrow}>Topic wheel</H1>
+          <Card flat>
+            <Label>Category</Label>
+            <H3>{spin ? spin.category.title : 'Spinning…'}</H3>
+          </Card>
+          <Card>
+            <Label>What you pitch</Label>
+            <H3>{ready ? spin.case.title : spinning ? 'Spinning…' : '—'}</H3>
+            {ready && (
+              <Muted>
+                Audience: {audience ? `${audience.name.toLowerCase()} — they care about ${audience.focus.toLowerCase()}` : spin.case.audience}
+              </Muted>
+            )}
+          </Card>
+          <ErrorText>{error}</ErrorText>
+          <View style={styles.actions}>
+            {ready ? (
+              <TicketButton
+                title="Take this topic"
+                stubTop="5 min"
+                stubBottom="→"
+                onPress={() => {
+                  startTopic('training', spin.case);
+                  router.push('/prep');
+                }}
+                stretch={!wide}
+              />
+            ) : null}
+            <Button title="Spin again" variant="secondary" disabled={spinning} onPress={run} />
+          </View>
+        </View>
+      </Container>
+    </Page>
   );
-}
-
-function AudienceLine({ value }: { value: string }) {
-  const audience = findAudience(value);
-  return (
-    <Body muted>
-      Перед кем: {audience ? `${audience.icon} ${audience.name} — им важно: ${audience.focus.toLowerCase()}` : value}
-    </Body>
-  );
-}
-
-function wait(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 const styles = StyleSheet.create({
-  wheelBox: { alignItems: 'center', paddingVertical: 8 },
-  wheel: {
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    backgroundColor: colors.card,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  wheelFace: { fontSize: 84 },
+  main: { paddingTop: 8, paddingBottom: 48, gap: 24 },
+  mainWide: { flexDirection: 'row', alignItems: 'center', gap: 64, paddingTop: 40 },
+  wheelBox: { alignItems: 'center' },
+  wheelBoxWide: { flex: 1 },
+  pointer: { marginBottom: -14, zIndex: 1 },
+  side: { gap: 18, flex: 1 },
+  titleNarrow: { fontSize: 28, lineHeight: 34 },
+  actions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 16, marginTop: 4 },
 });

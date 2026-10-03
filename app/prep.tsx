@@ -1,19 +1,23 @@
 import { Redirect, router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { StyleSheet, Text, TextInput } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
 import { api } from '@/api/client';
+import { c, font, formatTime } from '@/design/theme';
+import { useLayout } from '@/hooks/useLayout';
+import { useStayAwake } from '@/hooks/useStayAwake';
 import { useGame } from '@/store/game';
+import { AppHeader } from '@/ui/AppHeader';
 import { Brief } from '@/ui/Brief';
-import { Body, Button, Card, ErrorText, Label, Screen, Title } from '@/ui/kit';
-import { useStayAwake } from '@/ui/useStayAwake';
-import { colors, formatTime } from '@/ui/theme';
+import { TicketButton } from '@/ui/decor';
+import { Button, Card, Container, ErrorText, Field, H1, Label, Muted, P, Page } from '@/ui/primitives';
 
 const WARN_SEC = 30;
 const GO_DELAY_SEC = 5;
 
 export default function Prep() {
   useStayAwake();
+  const { wide } = useLayout();
   const { user, mode, topic, ownPitch, round, notes, setRound, setNotes } = useGame();
   const [left, setLeft] = useState<number | null>(null);
   const [error, setError] = useState('');
@@ -22,13 +26,11 @@ export default function Prep() {
 
   useEffect(() => {
     if (!user || !topic || round) return;
-    const ownData =
-      ownPitch ??
-      (mode === 'own' ? { title: topic.title, text: topic.brief, audience: topic.audience } : undefined);
+    const ownData = ownPitch ?? (mode === 'own' ? { title: topic.title, text: topic.brief, audience: topic.audience } : undefined);
     api
       .createRound(user.user_id, mode, mode === 'own' ? undefined : topic.id, ownData)
       .then(setRound)
-      .catch((e: Error) => setError(`Раунд не создался: ${e.message}`));
+      .catch((e: Error) => setError(`Could not create the round: ${e.message}`));
   }, [user, topic, ownPitch, round, mode, setRound]);
 
   useEffect(() => {
@@ -54,60 +56,60 @@ export default function Prep() {
     return () => clearTimeout(id);
   }, [goIn]);
 
-  const warning = left !== null && left > 0 && left <= WARN_SEC;
-
   if (!user || !topic) return <Redirect href="/" />;
 
+  const warning = left !== null && left > 0 && left <= WARN_SEC;
+  const hot = warning || goIn !== null;
+
   return (
-    <Screen>
-      <Title>Подготовка</Title>
-      <Text style={[styles.timer, (warning || goIn !== null) && styles.timerWarn]}>
-        {left === null ? '—:——' : formatTime(left)}
-      </Text>
-      {warning && <Body>⏳ Осталось меньше {WARN_SEC} секунд — допиши заметки и соберись.</Body>}
-      {goIn !== null && (
-        <Card>
-          <Label>Время подготовки вышло</Label>
-          <Body>Выходим на сцену через {goIn}…</Body>
-          <Button title="На сцену сейчас" onPress={() => router.replace('/stage')} />
-        </Card>
-      )}
-      <Brief
-        topic={topic}
-        minSec={round?.pitch_min_sec ?? 60}
-        maxSec={round?.pitch_max_sec ?? 180}
-      />
-      <TextInput
-        style={styles.notes}
-        placeholder="Заметки для себя — ИИ сверит их с тем, что ты скажешь"
-        placeholderTextColor={colors.muted}
-        value={notes}
-        onChangeText={setNotes}
-        multiline
-      />
-      <ErrorText>{error}</ErrorText>
-      <Button title="Я готов" disabled={!round} onPress={() => router.replace('/stage')} />
-      <Button title="В меню" variant="secondary" onPress={() => router.replace('/menu')} />
-    </Screen>
+    <Page>
+      <AppHeader>
+        <Button title="Menu" variant="secondary" size="sm" onPress={() => router.replace('/menu')} />
+      </AppHeader>
+      <Container style={[styles.main, wide && styles.mainWide]}>
+        <View style={[styles.left, wide && styles.leftWide]}>
+          <H1 style={!wide && styles.titleNarrow}>Preparation</H1>
+          <View style={[styles.board, hot && { borderColor: c.bad }]}>
+            <Text style={styles.boardLabel}>until you go on stage</Text>
+            <Text style={[styles.timer, hot && { color: '#FF8A7A' }]}>{left === null ? '—:——' : formatTime(left)}</Text>
+          </View>
+          {warning && <P>Less than {WARN_SEC} seconds left — finish your notes and get ready.</P>}
+          {goIn !== null && (
+            <Card tone="accent">
+              <Label style={{ color: c.ink }}>Preparation time is up</Label>
+              <P>Going on stage in {goIn}…</P>
+            </Card>
+          )}
+          <Field
+            placeholder="Notes for yourself — AI will compare them with what you actually say"
+            value={notes}
+            onChangeText={setNotes}
+            multiline
+            accessibilityLabel="Notes for yourself"
+            style={styles.notes}
+          />
+          <Muted>There are no notes on stage: just the room, the time and the attention bar.</Muted>
+          <ErrorText>{error}</ErrorText>
+          {round ? <TicketButton title="Ready — go on stage" stubTop="pitch" stubBottom="1–3 min" onPress={() => router.replace('/stage')} stretch={!wide} /> : null}
+        </View>
+        <View style={[styles.right, wide && styles.rightWide]}>
+          <Brief topic={topic} minSec={round?.pitch_min_sec ?? 60} maxSec={round?.pitch_max_sec ?? 180} />
+        </View>
+      </Container>
+    </Page>
   );
 }
 
 const styles = StyleSheet.create({
-  timer: {
-    fontSize: 56,
-    fontWeight: '800',
-    color: colors.accent,
-    textAlign: 'center',
-    fontVariant: ['tabular-nums'],
-  },
-  timerWarn: { color: colors.bad },
-  notes: {
-    minHeight: 120,
-    borderRadius: 16,
-    padding: 16,
-    fontSize: 16,
-    color: colors.text,
-    backgroundColor: colors.card,
-    textAlignVertical: 'top',
-  },
+  main: { paddingTop: 8, paddingBottom: 56, gap: 22 },
+  mainWide: { flexDirection: 'row', alignItems: 'flex-start', gap: 40, paddingTop: 16 },
+  left: { gap: 18 },
+  leftWide: { flex: 1 },
+  right: { gap: 22 },
+  rightWide: { flex: 1.2 },
+  titleNarrow: { fontSize: 28, lineHeight: 34 },
+  board: { backgroundColor: c.ink, borderRadius: 20, paddingVertical: 14, alignItems: 'center', borderWidth: 2.5, borderColor: c.ink, transform: [{ rotate: '-1.5deg' }] },
+  boardLabel: { fontFamily: font.bold, fontSize: 12, letterSpacing: 1.1, textTransform: 'uppercase', color: c.onInkMuted },
+  timer: { fontFamily: font.display, fontSize: 64, lineHeight: 72, color: c.orange, fontVariant: ['tabular-nums'] },
+  notes: { minHeight: 180 },
 });

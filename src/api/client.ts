@@ -13,6 +13,7 @@ import type {
   LeaderboardEntry,
   Mode,
   OwnPitchInput,
+  Profile,
   RefineResponse,
   Round,
   Spin,
@@ -26,7 +27,7 @@ function mocked<T>(value: T): Promise<T> {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  if (!env.apiUrl) throw new Error('Не задан EXPO_PUBLIC_API_URL');
+  if (!env.apiUrl) throw new Error('EXPO_PUBLIC_API_URL is not set');
   const res = await fetch(env.apiUrl.replace(/\/$/, '') + path, init);
   if (!res.ok) {
     let detail = '';
@@ -92,7 +93,7 @@ export const api = {
 
   delivery: async (roundId: string, audioUri: string | null, gaze: GazePoint[] = [], notes = '') => {
     if (env.useMocks) return mocked(mocks.delivery());
-    if (!audioUri) throw new Error('Нет записи выступления');
+    if (!audioUri) throw new Error('There is no recording of the pitch');
     const form = new FormData();
     await appendAudio(form, audioUri);
     form.append('gaze', JSON.stringify(gaze));
@@ -109,7 +110,7 @@ export const api = {
 
   juryAnswer: async (roundId: string, questionId: string, audioUri: string | null) => {
     if (env.useMocks) return mocked(mocks.juryAnswer());
-    if (!audioUri) throw new Error('Нет записи ответа');
+    if (!audioUri) throw new Error('There is no recording of the answer');
     const form = new FormData();
     form.append('question_id', questionId);
     await appendAudio(form, audioUri);
@@ -121,6 +122,11 @@ export const api = {
 
   finish: (roundId: string) =>
     env.useMocks ? mocked(mocks.finish()) : post<Finish>(`/api/game/rounds/${roundId}/finish`),
+
+  profile: (userId: string) =>
+    env.useMocks
+      ? mocked(mocks.profile())
+      : request<Profile>(`/api/game/profile?user_id=${encodeURIComponent(userId)}`),
 
   leaderboard: () =>
     env.useMocks

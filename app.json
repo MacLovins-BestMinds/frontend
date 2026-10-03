@@ -4,15 +4,15 @@
     "slug": "stage-zero",
     "scheme": "stagezero",
     "version": "1.0.0",
-    "orientation": "portrait",
+    "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.stagezero.app",
       "infoPlist": {
-        "NSCameraUsageDescription": "Камера нужна, чтобы видеть тебя во время выступления и следить за взглядом.",
-        "NSMicrophoneUsageDescription": "Микрофон нужен, чтобы записывать выступление и ответы жюри."
+        "NSCameraUsageDescription": "The camera is used to show you during the pitch and to track where you look.",
+        "NSMicrophoneUsageDescription": "The microphone is used to record your pitch and your answers to the jury."
       }
     },
     "android": {
@@ -39,7 +39,7 @@
       [
         "expo-audio",
         {
-          "microphonePermission": "Микрофон нужен, чтобы записывать выступление и ответы жюри.",
+          "microphonePermission": "The microphone is used to record your pitch and your answers to the jury.",
           "enableBackgroundPlayback": false
         }
       ],
@@ -52,7 +52,7 @@
           "enableBackgroundAudio": false,
           "enableDeviceDetection": false,
           "iosConfig": {
-            "microphoneUsageDescription": "Микрофон нужен, чтобы записывать выступление и ответы жюри."
+            "microphoneUsageDescription": "The microphone is used to record your pitch and your answers to the jury."
           }
         }
       ],
