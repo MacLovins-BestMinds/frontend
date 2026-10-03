@@ -16,33 +16,47 @@ import type {
 
 const SPINS: Spin[] = [
   {
-    category: { id: 'health', title: 'Здоровье' },
+    category: { id: "philosophy", title: "🏛 Философия жизни" },
     case: {
-      id: 'health-01',
-      title: 'Умная таблетница, которая напоминает пожилым о лекарствах',
-      brief:
-        'Ты придумал умную таблетницу, которая напоминает пожилым о лекарствах. Убеди зал, что она нужна.',
-      audience: 'бизнесмены',
+      id: "stoicism",
+      title: "Стоицизм (Stoicism)",
+      brief: "Объясни простыми словами, что такое стоицизм, и убеди преподавателей, что его стоит разбирать со студентами.",
+      audience: "преподаватели",
+      summary: "Stoicism is a philosophical movement and practical guide to living, emphasizing daily self-discipline and moral improvement, which originated in the Hellenistic period of ancient Greece and continued well into the Roman Imperial period.",
+      sources: [
+        { title: "Wikipedia: Stoicism", url: "https://en.wikipedia.org/wiki/Stoicism" },
+        { title: "Britannica: Stoicism", url: "https://www.britannica.com/topic/Stoicism" },
+        { title: "Simple English Wikipedia: Stoicism (простой английский)", url: "https://simple.wikipedia.org/wiki/Stoicism" },
+      ],
     },
   },
   {
-    category: { id: 'education', title: 'Образование' },
+    category: { id: "thinking_traps", title: "🧠 Ловушки мышления" },
     case: {
-      id: 'education-01',
-      title: 'Приложение, которое учит школьников выступать',
-      brief:
-        'Ты сделал приложение, в котором школьники тренируют устные ответы перед нарисованным классом. Убеди зал, что оно нужно школам.',
-      audience: 'преподаватели',
+      id: "sunk_cost",
+      title: "Ошибка невозвратных затрат (Sunk cost fallacy)",
+      brief: "Объясни на примере, что такое ловушка невозвратных затрат, и убеди бизнесменов вовремя закрывать провальные проекты.",
+      audience: "бизнесмены",
+      summary: "In economics and business decision-making, a sunk cost is a cost that has already been incurred and cannot be recovered. Sunk costs are contrasted with prospective costs, which are future costs that may be avoided if action is taken.",
+      sources: [
+        { title: "Wikipedia: Sunk cost", url: "https://en.wikipedia.org/wiki/Sunk_cost" },
+        { title: "Investopedia: Sunk cost", url: "https://www.investopedia.com/terms/s/sunkcost.asp" },
+      ],
     },
   },
   {
-    category: { id: 'city', title: 'Город' },
+    category: { id: "space", title: "🚀 Космос и Вселенная" },
     case: {
-      id: 'city-01',
-      title: 'Сервис совместных поездок для соседей',
-      brief:
-        'Ты запускаешь сервис, где соседи по дому договариваются о совместных поездках на работу. Убеди зал, что люди будут им пользоваться.',
-      audience: 'широкая публика',
+      id: "fermi_paradox",
+      title: "Парадокс Ферми (Fermi paradox)",
+      brief: "Объясни, почему мы до сих пор не встретили инопланетян, и убеди зал в своей версии ответа.",
+      audience: "широкая публика",
+      summary: "The Fermi paradox is the seeming inconsistency between the lack of evidence of extraterrestrial civilizations and the apparently high likelihood of their existence.",
+      sources: [
+        { title: "Wikipedia: Fermi paradox", url: "https://en.wikipedia.org/wiki/Fermi_paradox" },
+        { title: "Britannica: Fermi paradox", url: "https://www.britannica.com/science/Fermi-paradox" },
+        { title: "Simple English Wikipedia: Fermi paradox (простой английский)", url: "https://simple.wikipedia.org/wiki/Fermi_paradox" },
+      ],
     },
   },
 ];
