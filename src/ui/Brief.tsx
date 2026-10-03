@@ -14,7 +14,8 @@ function formatRange(minSec: number, maxSec: number): string {
 /** Карточка темы, блок «Что от тебя хотят» и подсказки по аудитории с источниками. */
 export function Brief({ topic, minSec, maxSec }: { topic: Case; minSec: number; maxSec: number }) {
   const audience = findAudience(topic.audience);
-  const sources = [...(audience?.sources ?? []), ...GENERAL_SOURCES];
+  // сначала материалы по самой теме, потом — как говорить с аудиторией и о выступлениях вообще
+  const sources = [...(topic.sources ?? []), ...(audience?.sources ?? []), ...GENERAL_SOURCES];
 
   return (
     <>
@@ -23,6 +24,12 @@ export function Brief({ topic, minSec, maxSec }: { topic: Case; minSec: number; 
         <Body>{topic.title}</Body>
         <Body muted>{topic.brief}</Body>
       </Card>
+      {topic.summary ? (
+        <Card>
+          <Label>Коротко о теме (English)</Label>
+          <Body>{topic.summary}</Body>
+        </Card>
+      ) : null}
       <Card>
         <Label>Что от тебя хотят</Label>
         <Body>• Кому: {audience ? `${audience.icon} ${audience.name}` : topic.audience}.</Body>

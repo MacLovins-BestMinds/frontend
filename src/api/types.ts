@@ -8,7 +8,18 @@ export type User = { user_id: string; nick: string; rank: Rank };
 
 export type Category = { id: string; title: string };
 
-export type Case = { id: string; title: string; brief: string; audience: string };
+export type SourceLink = { title: string; url: string };
+
+export type Case = {
+  id: string;
+  title: string;
+  brief: string;
+  audience: string;
+  /** 2–3 предложения о теме на английском (Википедия). */
+  summary?: string | null;
+  /** Проверенные ссылки: Википедия + 1–2 сайта. */
+  sources?: SourceLink[];
+};
 
 export type Spin = { category: Category; case: Case };
 
