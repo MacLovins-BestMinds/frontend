@@ -33,9 +33,12 @@ export type Round = {
 };
 
 export type TimelineEvent = {
-  type: 'filler' | 'long_pause' | 'hesitation' | 'pace' | 'gaze_off' | 'good_pause';
+  type: 'filler' | 'repeat' | 'long_pause' | 'hesitation' | 'pace' | 'gaze_off' | 'good_pause';
   t: number;
   text: string;
+  /** Место в transcript (символы). start === end — точка между словами (пауза, темп). */
+  start?: number | null;
+  end?: number | null;
 };
 
 export type Delivery = {
@@ -58,9 +61,23 @@ export type Delivery = {
     fillers: number;
     fillers_per_min: number;
     long_pauses: number;
-    gaze_on_ratio: number;
+    /** Доля времени со взглядом в зал; null — взгляд не измерялся. */
+    gaze_on_ratio: number | null;
   };
   events: TimelineEvent[];
+  tips: string[];
+  /** Оценка английского произношения; null — не настроено или речь не на английском. */
+  pronunciation?: Pronunciation | null;
+};
+
+export type Pronunciation = {
+  overall_score: number;
+  accuracy_score: number;
+  fluency_score: number;
+  prosody_score: number | null;
+  mispronounced_words_count: number;
+  monotone: boolean;
+  words: { word: string; t: number; accuracy: number; error: string }[];
   tips: string[];
 };
 
@@ -101,3 +118,7 @@ export type OwnPitchInput = {
   text: string;
   audience: string;
 };
+
+export type RoundSummary = { id: string; mode: string; total: number; content: number; delivery: number; jury: number; created_at: string };
+
+export type Profile = { nick: string; rank: Rank; last_rounds: RoundSummary[] };

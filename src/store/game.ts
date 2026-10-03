@@ -1,6 +1,30 @@
 import { create } from 'zustand';
 
-import type { Case, Delivery, Finish, JuryAnswer, Mode, OwnPitchInput, Round, User } from '@/api/types';
+import { Platform } from 'react-native';
+
+import type { Case, Delivery, Finish, JuryAnswer, JuryQuestion, Mode, OwnPitchInput, Round, User } from '@/api/types';
+
+const USER_KEY = 'stage-zero-user';
+
+// На сайте помним вход между перезагрузками; в приложении пока нет — нужно отдельное хранилище.
+function loadUser(): User | null {
+  if (Platform.OS !== 'web' || typeof localStorage === 'undefined') return null;
+  try {
+    return JSON.parse(localStorage.getItem(USER_KEY) ?? 'null');
+  } catch {
+    return null;
+  }
+}
+
+function saveUser(user: User | null) {
+  if (Platform.OS !== 'web' || typeof localStorage === 'undefined') return;
+  try {
+    if (user) localStorage.setItem(USER_KEY, JSON.stringify(user));
+    else localStorage.removeItem(USER_KEY);
+  } catch {
+    // хранилище недоступно — просто не запоминаем
+  }
+}
 
 type GameState = {
   user: User | null;
@@ -13,7 +37,16 @@ type GameState = {
   juryAnswers: JuryAnswer[];
   result: Finish | null;
 
-  setUser: (user: User) => void;
+  juryQuestions: JuryQuestion[];
+  /** запись питча — чтобы в разборе проигрывать с нужного места */
+  pitchAudioUri: string | null;
+  /** видеозапись питча (только в браузере) и на сколько секунд она началась позже звука */
+  pitchVideoUri: string | null;
+  pitchVideoOffset: number;
+  setPitchVideo: (uri: string | null, offset: number) => void;
+  setUser: (user: User | null) => void;
+  setJuryQuestions: (questions: JuryQuestion[]) => void;
+  setPitchAudio: (uri: string | null) => void;
   startTopic: (mode: Mode, topic: Case) => void;
   startOwnPitch: (own: OwnPitchInput) => void;
   setRound: (round: Round) => void;
@@ -24,7 +57,11 @@ type GameState = {
 };
 
 export const useGame = create<GameState>((set) => ({
-  user: null,
+  user: loadUser(),
+  juryQuestions: [],
+  pitchAudioUri: null,
+  pitchVideoUri: null,
+  pitchVideoOffset: 0,
   mode: 'training',
   topic: null,
   ownPitch: null,
@@ -34,9 +71,15 @@ export const useGame = create<GameState>((set) => ({
   juryAnswers: [],
   result: null,
 
-  setUser: (user) => set({ user }),
+  setUser: (user) => {
+    saveUser(user);
+    set({ user });
+  },
+  setJuryQuestions: (juryQuestions) => set({ juryQuestions }),
+  setPitchAudio: (pitchAudioUri) => set({ pitchAudioUri }),
+  setPitchVideo: (pitchVideoUri, pitchVideoOffset) => set({ pitchVideoUri, pitchVideoOffset }),
   startTopic: (mode, topic) =>
-    set({ mode, topic, ownPitch: null, round: null, notes: '', delivery: null, juryAnswers: [], result: null }),
+    set({ mode, topic, ownPitch: null, round: null, notes: '', delivery: null, juryAnswers: [], juryQuestions: [], pitchAudioUri: null, pitchVideoUri: null, result: null }),
   startOwnPitch: (own) =>
     set({
       mode: 'own',
@@ -51,6 +94,9 @@ export const useGame = create<GameState>((set) => ({
       notes: own.text,
       delivery: null,
       juryAnswers: [],
+      juryQuestions: [],
+      pitchAudioUri: null,
+      pitchVideoUri: null,
       result: null,
     }),
   setRound: (round) => set({ round }),
@@ -58,5 +104,9 @@ export const useGame = create<GameState>((set) => ({
   setDelivery: (delivery) => set({ delivery }),
   addJuryAnswer: (answer) => set((s) => ({ juryAnswers: [...s.juryAnswers, answer] })),
   setResult: (result) =>
-    set((s) => ({ result, user: s.user ? { ...s.user, rank: result.rank } : s.user })),
+    set((s) => {
+      const user = s.user ? { ...s.user, rank: result.rank } : s.user;
+      saveUser(user);
+      return { result, user };
+    }),
 }));

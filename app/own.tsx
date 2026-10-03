@@ -1,315 +1,153 @@
 import { Redirect, router } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { api } from '@/api/client';
 import type { AudienceId, RefineResponse } from '@/api/types';
 import { AUDIENCES } from '@/content/audiences';
+import { c, font, outline, shadow } from '@/design/theme';
+import { useLayout } from '@/hooks/useLayout';
 import { useGame } from '@/store/game';
-import { Body, Button, Card, ErrorText, Label, Screen, Title } from '@/ui/kit';
-import { colors } from '@/ui/theme';
+import { AppHeader } from '@/ui/AppHeader';
+import { TicketButton } from '@/ui/decor';
+import { Button, Card, Container, ErrorText, Field, H1, H3, Label, Muted, P, Page, Small } from '@/ui/primitives';
+
+type RefineMode = 'structure' | 'improve';
 
 export default function OwnPitch() {
+  const { wide } = useLayout();
   const user = useGame((s) => s.user);
   const startOwnPitch = useGame((s) => s.startOwnPitch);
-
   const [title, setTitle] = useState('');
   const [audience, setAudience] = useState<AudienceId>('business');
   const [text, setText] = useState('');
-  const [originalText, setOriginalText] = useState('');
-  const [refineResult, setRefineResult] = useState<RefineResponse | null>(null);
-  const [refineMode, setRefineMode] = useState<'structure' | 'improve' | null>(null);
-  const [loadingRefine, setLoadingRefine] = useState(false);
+  const [original, setOriginal] = useState('');
+  const [refined, setRefined] = useState<RefineResponse | null>(null);
+  const [loading, setLoading] = useState<RefineMode | null>(null);
   const [error, setError] = useState('');
 
   if (!user) return <Redirect href="/" />;
 
-  const handleRefine = async (mode: 'structure' | 'improve') => {
-    if (!text.trim()) {
-      setError('Сначала напиши тезисы или текст питча');
-      return;
-    }
+  const refine = async (mode: RefineMode) => {
+    if (!text.trim()) return setError('Write your talking points or pitch text first');
     setError('');
-    setLoadingRefine(true);
-    setRefineMode(mode);
+    setLoading(mode);
     try {
-      if (!originalText) {
-        setOriginalText(text);
-      }
-      const res = await api.refine(text.trim(), audience, mode);
-      setRefineResult(res);
+      // «было» — всегда исходный текст автора, даже если улучшаем второй раз
+      const source = original || text;
+      if (!original) setOriginal(text);
+      setRefined(await api.refine(source.trim(), audience, mode));
     } catch (e) {
-      setError(`Ошибка ИИ-помощника: ${(e as Error).message}`);
+      setError(`The AI helper did not respond: ${(e as Error).message}`);
     } finally {
-      setLoadingRefine(false);
+      setLoading(null);
     }
   };
 
-  const applyRefinedText = () => {
-    if (!refineResult?.text) return;
-    setText(refineResult.text);
-  };
-
-  const revertToOriginal = () => {
-    if (originalText) {
-      setText(originalText);
-    }
-  };
-
-  const handleStart = () => {
-    if (!title.trim()) {
-      setError('Укажи название идеи или тему питча');
-      return;
-    }
-    if (!text.trim()) {
-      setError('Добавь хотя бы пару предложений или тезисов своего питча');
-      return;
-    }
-
-    startOwnPitch({
-      title: title.trim(),
-      text: text.trim(),
-      audience,
-    });
-
+  const start = () => {
+    if (!title.trim()) return setError('Add the name of your idea or the topic of the pitch');
+    if (!text.trim()) return setError('Add at least a couple of sentences or talking points');
+    startOwnPitch({ title: title.trim(), text: text.trim(), audience });
     router.push('/prep');
   };
 
-  const selectedAudience = AUDIENCES.find((a) => a.id === audience) ?? AUDIENCES[1];
-
   return (
-    <Screen>
-      <Title>Свой питч</Title>
-      <Body muted>
-        Выступай со своей реальной идеей или проектом. Выбери аудиторию, напиши тезисы, а ИИ разложит их по
-        блокам и усилит слабые места.
-      </Body>
-
-      <Card>
-        <Label>1. Тема или название проекта</Label>
-        <TextInput
-          style={styles.input}
-          placeholder="Например: Умная кофемашина с распознаванием лиц"
-          placeholderTextColor={colors.muted}
-          value={title}
-          onChangeText={(v) => {
-            setTitle(v);
-            setError('');
-          }}
-          maxLength={120}
-        />
-      </Card>
-
-      <Card>
-        <Label>2. Для кого выступаешь</Label>
-        <Body muted>Аудитория меняет стиль вопросов жюри и реакцию зала.</Body>
-        <View style={styles.audienceGrid}>
-          {AUDIENCES.map((item) => {
-            const isSelected = item.id === audience;
-            return (
-              <Pressable
-                key={item.id}
-                onPress={() => setAudience(item.id)}
-                style={[styles.audienceCard, isSelected && styles.audienceCardSelected]}
-              >
-                <View style={styles.audienceHeader}>
-                  <Text style={styles.audienceIcon}>{item.icon}</Text>
-                  <Text style={[styles.audienceTitle, isSelected && styles.audienceTitleSelected]}>
-                    {item.name}
-                  </Text>
-                </View>
-                <Text style={styles.audienceFocus}>{item.focus}</Text>
-              </Pressable>
-            );
-          })}
-        </View>
-      </Card>
-
-      <Card>
-        <Label>3. Текст питча или тезисы</Label>
-        <Body muted>
-          Напиши свой питч целиком или тезисно: в чём проблема, решение, почему ты и к чему призываешь.
-        </Body>
-        <TextInput
-          style={styles.textArea}
-          placeholder="Напиши текст выступления здесь..."
-          placeholderTextColor={colors.muted}
-          value={text}
-          onChangeText={(v) => {
-            setText(v);
-            setError('');
-          }}
-          multiline
-        />
-
-        <View style={styles.refineButtons}>
-          <Button
-            title="Структурировать"
-            variant="secondary"
-            loading={loadingRefine && refineMode === 'structure'}
-            disabled={!text.trim() || loadingRefine}
-            onPress={() => handleRefine('structure')}
-          />
-          <Button
-            title="Структурировать и улучшить"
-            variant="secondary"
-            loading={loadingRefine && refineMode === 'improve'}
-            disabled={!text.trim() || loadingRefine}
-            onPress={() => handleRefine('improve')}
-          />
-        </View>
-      </Card>
-
-      {refineResult && (
-        <Card style={styles.refineCard}>
-          <Label>Разбор и рекомендации ИИ</Label>
-          {refineResult.notes.map((note, idx) => (
-            <View key={idx} style={styles.noteRow}>
-              <Text style={styles.noteBullet}>💡</Text>
-              <Text style={styles.noteText}>{note}</Text>
+    <Page>
+      <AppHeader>
+        <Button title="Menu" variant="secondary" size="sm" onPress={() => router.replace('/menu')} />
+      </AppHeader>
+      <Container style={[styles.main, wide && styles.mainWide]}>
+        <View style={[styles.col, wide && styles.colWide]}>
+          <H1 style={!wide && styles.titleNarrow}>Your own pitch</H1>
+          <Muted>Pitch your own idea. Pick an audience and write the text — the jury will ask about it.</Muted>
+          <Card flat>
+            <Label>1. Topic or project name</Label>
+            <Field
+              placeholder="For example: a smart coffee machine that remembers your order"
+              value={title}
+              onChangeText={(v) => (setTitle(v), setError(''))}
+              maxLength={120}
+              accessibilityLabel="Topic or project name"
+            />
+          </Card>
+          <Card flat>
+            <Label>2. Who you are pitching to</Label>
+            <Small>The audience changes the style of the jury questions and how strict the room is.</Small>
+            <View style={styles.audiences}>
+              {AUDIENCES.map((a) => {
+                const selected = a.id === audience;
+                return (
+                  <Pressable
+                    key={a.id}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected }}
+                    onPress={() => setAudience(a.id)}
+                    style={[styles.audience, selected && styles.audienceSelected]}
+                  >
+                    <Text style={styles.audienceName}>{a.name}</Text>
+                    <Text style={styles.audienceFocus}>{a.focus}</Text>
+                  </Pressable>
+                );
+              })}
             </View>
-          ))}
-
-          {refineResult.blocks && refineResult.blocks.length > 0 && (
-            <View style={styles.blocksContainer}>
-              <Label>Структура выступления (5 блоков)</Label>
-              {refineResult.blocks.map((block, idx) => (
-                <View key={idx} style={styles.blockItem}>
-                  <Text style={styles.blockTitle}>{block.title}</Text>
-                  <Text style={styles.blockContent}>
-                    {block.text ? block.text : '⚠️ В твоём тексте не хватает этого блока'}
-                  </Text>
-                </View>
+          </Card>
+        </View>
+        <View style={[styles.col, wide && styles.colWide]}>
+          <Card flat>
+            <Label>3. Pitch text or talking points</Label>
+            <Field
+              placeholder="What the problem is, what you offer, why you, and what you are asking for"
+              value={text}
+              onChangeText={(v) => (setText(v), setError(''))}
+              multiline
+              maxLength={5000}
+              accessibilityLabel="Pitch text"
+              style={styles.text}
+            />
+            <View style={styles.refine}>
+              <Button title="Structure" variant="secondary" size="sm" loading={loading === 'structure'} disabled={loading !== null} onPress={() => refine('structure')} />
+              <Button title="Structure and improve" variant="secondary" size="sm" loading={loading === 'improve'} disabled={loading !== null} onPress={() => refine('improve')} />
+            </View>
+            <Small>You can keep it as is — then just go on stage.</Small>
+          </Card>
+          {refined && (
+            <Card tone="accent">
+              <Label style={{ color: c.ink }}>After</Label>
+              <P>{refined.text}</P>
+              {refined.notes.map((n) => (
+                <Text key={n} style={styles.note}>
+                  • {n}
+                </Text>
               ))}
-            </View>
+              <View style={styles.refine}>
+                <Button title="Use this text" variant="ink" size="sm" onPress={() => setText(refined.text)} />
+                <Button title="Restore mine" variant="secondary" size="sm" onPress={() => original && setText(original)} />
+              </View>
+              <H3 style={styles.was}>Before</H3>
+              <Text style={styles.note}>{original}</Text>
+            </Card>
           )}
-
-          <View style={styles.diffActions}>
-            <Button title="Применить улучшенный вариант" onPress={applyRefinedText} />
-            {originalText !== '' && originalText !== text && (
-              <Button title="Вернуть исходный текст" variant="secondary" onPress={revertToOriginal} />
-            )}
-          </View>
-        </Card>
-      )}
-
-      <ErrorText>{error}</ErrorText>
-
-      <Button
-        title={`К подготовке (аудитория: ${selectedAudience.name})`}
-        disabled={!title.trim() || !text.trim()}
-        onPress={handleStart}
-      />
-
-      <Button title="В меню" variant="secondary" onPress={() => router.replace('/menu')} />
-    </Screen>
+          <ErrorText>{error}</ErrorText>
+          <TicketButton title="On to preparation" stubTop="5 min" stubBottom="→" onPress={start} stretch={!wide} />
+        </View>
+      </Container>
+    </Page>
   );
 }
 
 const styles = StyleSheet.create({
-  input: {
-    minHeight: 52,
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    fontSize: 16,
-    color: colors.text,
-    backgroundColor: colors.cardLight,
-  },
-  audienceGrid: {
-    gap: 10,
-    marginTop: 4,
-  },
-  audienceCard: {
-    backgroundColor: colors.cardLight,
-    borderRadius: 14,
-    padding: 14,
-    borderWidth: 2,
-    borderColor: 'transparent',
-    gap: 4,
-  },
-  audienceCardSelected: {
-    borderColor: colors.accent,
-    backgroundColor: '#38314E',
-  },
-  audienceHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  audienceIcon: {
-    fontSize: 20,
-  },
-  audienceTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  audienceTitleSelected: {
-    color: colors.accent,
-  },
-  audienceFocus: {
-    fontSize: 13,
-    color: colors.muted,
-    lineHeight: 18,
-    paddingLeft: 28,
-  },
-  textArea: {
-    minHeight: 140,
-    borderRadius: 14,
-    padding: 16,
-    fontSize: 15,
-    lineHeight: 22,
-    color: colors.text,
-    backgroundColor: colors.cardLight,
-    textAlignVertical: 'top',
-  },
-  refineButtons: {
-    gap: 10,
-    marginTop: 8,
-  },
-  refineCard: {
-    borderLeftWidth: 4,
-    borderLeftColor: colors.accent,
-  },
-  noteRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-    marginVertical: 2,
-  },
-  noteBullet: {
-    fontSize: 14,
-    marginTop: 2,
-  },
-  noteText: {
-    fontSize: 14,
-    color: colors.text,
-    lineHeight: 20,
-    flex: 1,
-  },
-  blocksContainer: {
-    marginTop: 12,
-    gap: 8,
-  },
-  blockItem: {
-    backgroundColor: colors.cardLight,
-    borderRadius: 12,
-    padding: 12,
-    gap: 4,
-  },
-  blockTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.accent,
-    textTransform: 'uppercase',
-  },
-  blockContent: {
-    fontSize: 14,
-    color: colors.text,
-    lineHeight: 20,
-  },
-  diffActions: {
-    marginTop: 12,
-    gap: 10,
-  },
+  main: { paddingTop: 8, paddingBottom: 56, gap: 22 },
+  mainWide: { flexDirection: 'row', alignItems: 'flex-start', gap: 40, paddingTop: 16 },
+  col: { gap: 20 },
+  colWide: { flex: 1 },
+  titleNarrow: { fontSize: 28, lineHeight: 34 },
+  audiences: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 4 },
+  audience: { flexGrow: 1, flexBasis: 200, backgroundColor: c.paper, borderRadius: 16, padding: 14, gap: 4, ...outline },
+  audienceSelected: { backgroundColor: c.orange, ...shadow(4) },
+  audienceName: { fontFamily: font.bold, fontSize: 17, color: c.ink },
+  audienceFocus: { fontFamily: font.body, fontSize: 14, lineHeight: 19, color: c.ink },
+  text: { minHeight: 220 },
+  refine: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 4 },
+  note: { fontFamily: font.body, fontSize: 15, lineHeight: 21, color: c.ink },
+  was: { fontSize: 17, marginTop: 8 },
 });

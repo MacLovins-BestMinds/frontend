@@ -1,80 +1,336 @@
 import { router } from 'expo-router';
-import { useState } from 'react';
-import { StyleSheet, Text, TextInput } from 'react-native';
+import { useRef, useState } from 'react';
+import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { api } from '@/api/client';
-import { env } from '@/config/env';
+import { c, font, outline, shadow } from '@/design/theme';
+import { useLayout } from '@/hooks/useLayout';
+import { ART, CHARACTERS } from '@/scene/assets';
 import { useGame } from '@/store/game';
-import { Body, Button, Card, ErrorText, Label, Screen, Title } from '@/ui/kit';
-import { colors } from '@/ui/theme';
+import { AppHeader } from '@/ui/AppHeader';
+import { Backdrop } from '@/ui/Backdrop';
+import { Bubble, Flower, Rays, Spark, Squiggle, Stamp, TicketButton, Valance } from '@/ui/decor';
+import { Button, Card, Container, ErrorText, Field, H2, H3, Label, Muted, P, Small, Tag } from '@/ui/primitives';
 
 const STEPS = [
-  { n: '1', title: 'Получаешь тему', text: 'Крутишь колесо: категория → кейс → готовая тема.' },
-  { n: '2', title: '5 минут на подготовку', text: 'Читаешь бриф и набрасываешь заметки для себя.' },
-  {
-    n: '3',
-    title: 'Выступаешь и отвечаешь жюри',
-    text: 'Зал реагирует вживую, в конце жюри задаёт вопросы, а ИИ разбирает выступление.',
-  },
+  { n: '1', title: 'You get a topic', short: 'The wheel gives you a topic', text: 'The wheel picks a simple everyday topic: your favourite food, cats or dogs, your city. Spin as many times as you like.' },
+  { n: '2', title: '5 minutes to prepare', short: '5 minutes to prepare', text: 'Read the brief, see what is expected of you, jot down notes. No slides.' },
+  { n: '3', title: 'You pitch and answer the jury', short: 'Pitch to the room, then jury questions', text: '1–3 minutes in front of the room, then one question from each jury member. At the end — a review and a rank.' },
 ];
 
-export default function Start() {
+const REACTIONS = [
+  { img: CHARACTERS.beanie_floral_jacket.loop[0], say: '…hello?', title: 'A long silence', text: 'Go quiet for a few seconds and the phones come out.', delta: 'the room gets bored', tilt: -5 },
+  { img: CHARACTERS.sailor_girl.idle, say: 'um…', title: 'Fillers and repeats', text: 'An “um” or a rushed line takes the sparkle away — nothing worse.', delta: 'the sparkle fades', tilt: 4 },
+  { img: CHARACTERS.bun_hoodie.idle, say: 'go on', title: 'You start talking again', text: 'The room forgives quickly: speak, and everyone looks back at you.', delta: 'attention comes back', tilt: -4, calm: true },
+  { img: CHARACTERS.beanie_orange_sweater.surprised, say: 'wow!', title: 'Confident and steady', text: 'Hold a thought without stumbling and their eyes light up.', delta: 'stars in their eyes', tilt: 5, good: true },
+];
+
+const MODES = [
+  { label: 'Training', title: 'The wheel gives you a topic', text: 'Category → case → ready-made topic. Every case has a hidden catch that the jury builds its questions on.' },
+  { label: 'Topic of the day', title: 'One topic for everyone', text: 'Today everyone pitches the same thing. Your best score of the day goes to the leaderboard.' },
+  { label: 'Your own pitch', title: 'Your topic and text', text: 'Pick an audience: contest jury, business people, teachers or the general public. The text can be structured and improved.' },
+];
+
+// лучи рампы в финальной секции — чуть светлее оранжевого
+const RAY = '#F9B947';
+
+const RANKS = [
+  { title: 'Novice', range: 'under 40', tilt: -7 },
+  { title: 'Speaker', range: '40–59', tilt: 5 },
+  { title: 'Pitcher', range: '60–74', tilt: -4 },
+  { title: 'Orator', range: '75–87', tilt: 8 },
+  { title: 'Legend', range: '88 and up', tilt: -6, top: true },
+];
+
+/** Заголовок с волнистым подчёркиванием под последним словом. */
+function Headline({ size }: { size: number }) {
+  const words = ['Pitch', 'to', 'a', 'room', 'that'];
+  const style = { fontFamily: font.display, fontSize: size, lineHeight: size * 1.12, color: c.ink };
+  return (
+    <View style={styles.headline} accessibilityRole="header" accessibilityLabel="Pitch to a room that reacts">
+      {words.map((w) => (
+        <Text key={w} style={style}>
+          {w}{' '}
+        </Text>
+      ))}
+      <View>
+        <Text style={style}>reacts</Text>
+        <View style={styles.squiggle}>
+          <Squiggle />
+        </View>
+      </View>
+    </View>
+  );
+}
+
+export default function Landing() {
+  const { wide, width } = useLayout();
+  const user = useGame((s) => s.user);
   const setUser = useGame((s) => s.setUser);
+  const scroll = useRef<ScrollView>(null);
+  const anchors = useRef<Record<string, number>>({});
+  const [finalHeight, setFinalHeight] = useState(0);
+  const [loginOpen, setLoginOpen] = useState(false);
   const [nick, setNick] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  const start = () => (user ? router.push('/menu') : setLoginOpen(true));
+  const jump = (id: string) => scroll.current?.scrollTo({ y: anchors.current[id] ?? 0, animated: true });
+  const mark = (id: string) => (e: { nativeEvent: { layout: { y: number } } }) => {
+    anchors.current[id] = e.nativeEvent.layout.y;
+  };
 
   const enter = async () => {
     setLoading(true);
     setError('');
     try {
       setUser(await api.auth(nick.trim()));
-      router.replace('/menu');
+      setLoginOpen(false);
+      router.push('/menu');
     } catch (e) {
-      setError(`Не получилось войти: ${(e as Error).message}`);
+      setError(`Could not sign in: ${(e as Error).message}`);
     } finally {
       setLoading(false);
     }
   };
 
+  const cta = <TicketButton title="Start training" stubTop="entry" stubBottom="free" onPress={start} stretch={!wide} />;
+
   return (
-    <Screen>
-      <Title>Stage Zero</Title>
-      <Body muted>Тренажёр выступлений. Как это работает:</Body>
-      {STEPS.map((s) => (
-        <Card key={s.n}>
-          <Label>Шаг {s.n}</Label>
-          <Body>{s.title}</Body>
-          <Body muted>{s.text}</Body>
-        </Card>
-      ))}
-      <TextInput
-        style={styles.input}
-        placeholder="Твой ник"
-        placeholderTextColor={colors.muted}
-        value={nick}
-        onChangeText={setNick}
-        autoCapitalize="none"
-        autoCorrect={false}
-        maxLength={50}
-      />
-      <ErrorText>{error}</ErrorText>
-      <Button title="Начать" onPress={enter} disabled={nick.trim().length < 2} loading={loading} />
-      <Text style={styles.debug}>
-        {env.useMocks ? 'Моки включены' : `API: ${env.apiUrl || 'не задан'}`}
-      </Text>
-    </Screen>
+    <SafeAreaView style={styles.page}>
+      <Backdrop crowd={false} />
+      <ScrollView ref={scroll} contentContainerStyle={styles.grow}>
+        <AppHeader home="/">
+          <Button title={user ? 'Menu' : 'Sign in'} variant="secondary" size="sm" onPress={start} style={wide ? shadow(3) : undefined} />
+        </AppHeader>
+
+        {/* Первый экран */}
+        <Container style={[styles.hero, wide ? styles.heroWide : styles.heroNarrow]}>
+          <View style={[styles.heroText, wide && styles.heroTextWide]}>
+            <Tag>Public speaking trainer</Tag>
+            <Headline size={wide ? 54 : 31} />
+            <Muted style={wide ? styles.lead : undefined}>
+              {wide
+                ? 'You pitch to a drawn audience and a table of three jury members. Speak with confidence and their eyes light up; go quiet for too long and the phones come out. Then the jury asks questions out loud and AI reviews your pitch.'
+                : 'Speak with confidence and their eyes light up; go quiet and the phones come out. Then the jury asks questions and AI reviews your pitch.'}
+            </Muted>
+            {wide ? (
+              <>
+                <View style={styles.ctaRow}>
+                  {cta}
+                  <Button title="How it works" variant="secondary" onPress={() => jump('how')} />
+                </View>
+                <Small>Free. You need a camera and a microphone.</Small>
+              </>
+            ) : (
+              <View style={styles.stepsNarrow}>
+                {STEPS.map((s) => (
+                  <View key={s.n} style={styles.stepRow}>
+                    <Text style={styles.stepRowNum}>{s.n}</Text>
+                    <Text style={styles.stepRowText}>{s.short}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
+          {wide ? (
+            <View style={styles.heroArt}>
+              <View style={styles.heroFrame}>
+                <Image source={ART.hero} style={styles.heroImage} resizeMode="cover" accessibilityLabel="The stage: ten audience members, silhouettes behind them, the jury at a table in front" />
+              </View>
+            </View>
+          ) : (
+            <View style={styles.ctaNarrow}>
+              {cta}
+              <Small style={styles.center}>Free. You need a camera and a microphone.</Small>
+            </View>
+          )}
+        </Container>
+
+        {wide && (
+          <>
+            {/* Как это работает */}
+            <View style={styles.dark} onLayout={mark('how')}>
+              <Valance width={width} />
+              <Container style={styles.section}>
+                <H2 style={styles.onInk}>How it works</H2>
+                <View style={styles.row}>
+                  {STEPS.map((s) => (
+                    <View key={s.n} style={styles.stepCard}>
+                      <Text style={styles.stepNum}>{s.n}</Text>
+                      <H3>{s.title}</H3>
+                      <Muted>{s.text}</Muted>
+                    </View>
+                  ))}
+                </View>
+              </Container>
+            </View>
+
+            {/* Зал живой */}
+            <Container style={styles.section}>
+              <View style={styles.sectionHead}>
+                <H2>The room is alive</H2>
+                <Muted style={styles.lead}>The audience listens with you: it lights up while you speak with confidence and drifts away when you stop.</Muted>
+              </View>
+              <View style={styles.row}>
+                {REACTIONS.map((r) => (
+                  <Card key={r.title} tone={r.good ? 'accent' : 'paper'} style={styles.reaction}>
+                    <View>
+                      <Image source={r.img} style={styles.reactionImage} resizeMode="contain" />
+                      <Bubble text={r.say} dark={r.good} tilt={r.tilt} style={{ top: 4, left: 0 }} />
+                    </View>
+                    <H3 style={styles.reactionTitle}>{r.title}</H3>
+                    {r.good ? <P style={styles.reactionText}>{r.text}</P> : <Muted style={styles.reactionText}>{r.text}</Muted>}
+                    <Text style={[styles.delta, (r.good || r.calm) && { color: c.ink }]}>{r.delta}</Text>
+                  </Card>
+                ))}
+              </View>
+            </Container>
+
+            {/* Режимы */}
+            <Container style={[styles.section, styles.noTop]}>
+              <H2>Three modes</H2>
+              <View style={styles.row}>
+                {MODES.map((m) => (
+                  <Card key={m.label} style={styles.mode}>
+                    <Label>{m.label}</Label>
+                    <H3 style={styles.modeTitle}>{m.title}</H3>
+                    <Muted>{m.text}</Muted>
+                  </Card>
+                ))}
+              </View>
+            </Container>
+
+            {/* Звания */}
+            <Container style={[styles.section, styles.noTop]}>
+              <Card flat style={styles.ranks}>
+                <View style={styles.sectionHead}>
+                  <H2 style={styles.ranksTitle}>Progress is your rank</H2>
+                  <Muted>It is based on the average score of your last five rounds. It can go up and down.</Muted>
+                </View>
+                <View style={styles.stamps}>
+                  {RANKS.map((r) => (
+                    <Stamp key={r.title} title={r.title} caption={r.range} captionBelow size={148} tilt={r.tilt} fill={r.top ? c.orange : undefined} />
+                  ))}
+                </View>
+              </Card>
+            </Container>
+          </>
+        )}
+
+        {/* Финал: зал ждёт */}
+        <View style={[styles.final, !wide && styles.finalNarrow]} onLayout={(e) => setFinalHeight(e.nativeEvent.layout.height)}>
+          {finalHeight > 0 && <Rays width={width} height={finalHeight} color={RAY} />}
+          {wide && (
+            <>
+              <View style={styles.finalValance}>
+                <Valance width={width} background="transparent" fill={c.ink} stroke={c.ink} dots={c.orange} />
+              </View>
+              <View style={[styles.finalDoodle, { left: '9%', top: 96, transform: [{ rotate: '-14deg' }] }]}>
+                <Flower size={72} center={c.orange} />
+              </View>
+              <View style={[styles.finalDoodle, { left: '19%', top: 196 }]}>
+                <Spark size={34} />
+              </View>
+              <View style={[styles.finalDoodle, { right: '10%', top: 110, transform: [{ rotate: '12deg' }] }]}>
+                <Spark size={64} />
+              </View>
+              <View style={[styles.finalDoodle, { right: '20%', top: 214, transform: [{ rotate: '18deg' }] }]}>
+                <Flower size={44} center={c.orange} />
+              </View>
+              <Container style={styles.finalInner}>
+                <View style={styles.finalTag}>
+                  <Text style={styles.finalTagText}>Curtain up</Text>
+                </View>
+                <H2 style={styles.finalTitle}>The room is waiting. Step out.</H2>
+                <TicketButton title="Start training" stubTop="entry" stubBottom="free" onPress={start} style={styles.finalTicket} />
+              </Container>
+            </>
+          )}
+          <View style={[styles.rowImage, !wide && styles.rowImageNarrow]}>
+            <Image source={ART.row} style={styles.heroImage} resizeMode="contain" accessibilityLabel="Ten audience members in a row" />
+            {wide && (
+              <>
+                <Bubble text="we’re waiting!" tilt={-6} style={{ left: '6%', top: -6 }} />
+                <Bubble text="your turn" dark tilt={5} style={{ left: '46%', top: 2 }} />
+                <Bubble text="go on!" tilt={7} style={{ right: '7%', top: -2 }} />
+              </>
+            )}
+          </View>
+        </View>
+      </ScrollView>
+
+      <Modal visible={loginOpen} transparent animationType="fade" onRequestClose={() => setLoginOpen(false)}>
+        <Pressable style={styles.backdrop} onPress={() => setLoginOpen(false)} accessibilityLabel="Close">
+          <Pressable style={styles.loginWrap} onPress={() => {}}>
+            <Card style={styles.login}>
+              <Label>Sign in</Label>
+              <H3>How should we announce you?</H3>
+              <Field placeholder="Your nickname" value={nick} onChangeText={setNick} autoCapitalize="none" autoCorrect={false} maxLength={50} autoFocus onSubmitEditing={() => nick.trim().length >= 2 && enter()} accessibilityLabel="Your nickname" />
+              <ErrorText>{error}</ErrorText>
+              <Button title="Step out" onPress={enter} disabled={nick.trim().length < 2} loading={loading} />
+              <Small>No password needed: this nickname will show on the leaderboard.</Small>
+            </Card>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  input: {
-    minHeight: 54,
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    fontSize: 17,
-    color: colors.text,
-    backgroundColor: colors.card,
-  },
-  debug: { fontSize: 12, color: colors.muted, textAlign: 'center' },
+  page: { flex: 1, backgroundColor: c.cream },
+  grow: { flexGrow: 1 },
+  hero: { gap: 24 },
+  heroWide: { flexDirection: 'row', alignItems: 'center', gap: 48, paddingTop: 28, paddingBottom: 72 },
+  heroNarrow: { paddingTop: 12, paddingBottom: 20 },
+  heroText: { gap: 16 },
+  heroTextWide: { flex: 1, gap: 24 },
+  headline: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-end' },
+  squiggle: { position: 'absolute', left: 0, right: 0, bottom: -10 },
+  lead: { fontSize: 20, lineHeight: 29, maxWidth: 720 },
+  ctaRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 18 },
+  ctaNarrow: { gap: 10 },
+  center: { textAlign: 'center' },
+  stepsNarrow: { gap: 10, marginTop: 4 },
+  stepRow: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: c.paper, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 10, ...outline },
+  stepRowNum: { fontFamily: font.display, fontSize: 20, color: c.burnt, minWidth: 20 },
+  stepRowText: { fontFamily: font.semi, fontSize: 15, color: c.ink, flex: 1 },
+  heroArt: { flex: 1.15 },
+  heroFrame: { width: '100%', aspectRatio: 16 / 9, borderRadius: 24, overflow: 'hidden', transform: [{ rotate: '1.2deg' }], ...outline, ...shadow(8) },
+  heroImage: { position: 'absolute', width: '100%', height: '100%' },
+  dark: { backgroundColor: c.ink },
+  section: { paddingVertical: 72, gap: 36 },
+  noTop: { paddingTop: 0 },
+  sectionHead: { gap: 10 },
+  onInk: { color: c.onInk },
+  row: { flexDirection: 'row', flexWrap: 'wrap', gap: 24 },
+  stepCard: { flexGrow: 1, flexBasis: 280, backgroundColor: c.cream, borderRadius: 20, padding: 28, gap: 10 },
+  stepNum: { fontFamily: font.display, fontSize: 40, lineHeight: 46, color: c.burnt },
+  reaction: { flexGrow: 1, flexBasis: 230, padding: 20, gap: 6 },
+  reactionImage: { width: '100%', height: 240 },
+  reactionTitle: { fontSize: 19 },
+  reactionText: { fontSize: 16 },
+  delta: { fontFamily: font.bold, fontSize: 15, color: c.bad },
+  mode: { flexGrow: 1, flexBasis: 300, padding: 28 },
+  modeTitle: { fontSize: 24, lineHeight: 30 },
+  ranks: { padding: 36, gap: 24, borderRadius: 24 },
+  ranksTitle: { fontSize: 28, lineHeight: 34 },
+  stamps: { flexDirection: 'row', flexWrap: 'wrap', gap: 24, alignItems: 'center' },
+  final: { backgroundColor: c.orange, borderTopWidth: 2.5, borderTopColor: c.ink, paddingTop: 64, alignItems: 'center', overflow: 'hidden' },
+  finalNarrow: { paddingTop: 14, marginTop: 'auto' },
+  finalInner: { alignItems: 'center', gap: 24, paddingTop: 36 },
+  finalValance: { position: 'absolute', left: 0, top: -2.5 },
+  finalDoodle: { position: 'absolute' },
+  finalTag: { alignSelf: 'center', backgroundColor: c.ink, borderRadius: 999, paddingHorizontal: 16, paddingVertical: 6, transform: [{ rotate: '-2deg' }] },
+  finalTagText: { fontFamily: font.bold, fontSize: 13, lineHeight: 17, letterSpacing: 1, textTransform: 'uppercase', color: c.orange },
+  finalTicket: { alignSelf: 'center', backgroundColor: c.paper },
+  finalTitle: { fontSize: 40, lineHeight: 46, textAlign: 'center' },
+  rowImage: { width: '100%', maxWidth: 1100, aspectRatio: 1649 / 417, marginTop: 24 },
+  rowImageNarrow: { width: 600, maxWidth: 600, height: 152, aspectRatio: undefined, marginTop: 0 },
+  backdrop: { flex: 1, backgroundColor: 'rgba(22,20,24,0.6)', alignItems: 'center', justifyContent: 'center', padding: 20 },
+  loginWrap: { width: '100%', maxWidth: 420 },
+  login: { gap: 14 },
 });
