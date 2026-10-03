@@ -8,6 +8,7 @@
   "main": "expo-router/entry",
   "scripts": {
     "start": "expo start --dev-client",
+    "web": "expo start --web",
     "ios": "expo run:ios",
     "android": "expo run:android",
     "prebuild": "expo prebuild",
