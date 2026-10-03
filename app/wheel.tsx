@@ -12,6 +12,7 @@ import { api } from '@/api/client';
 import type { Spin } from '@/api/types';
 import { useGame } from '@/store/game';
 import { Body, Button, Card, ErrorText, Label, Screen, Title } from '@/ui/kit';
+import { findAudience } from '@/content/audiences';
 import { colors } from '@/ui/theme';
 
 const SPIN_MS = 1400;
@@ -79,9 +80,9 @@ export default function Wheel() {
         <Body>{spin ? spin.category.title : 'Кручу…'}</Body>
       </Card>
       <Card>
-        <Label>Кейс</Label>
+        <Label>Что питчишь</Label>
         <Body>{phase === 'done' && spin ? spin.case.title : spinning ? 'Кручу…' : '—'}</Body>
-        {phase === 'done' && spin && <Body muted>Аудитория: {spin.case.audience}</Body>}
+        {phase === 'done' && spin && <AudienceLine value={spin.case.audience} />}
       </Card>
 
       <ErrorText>{error}</ErrorText>
@@ -97,6 +98,15 @@ export default function Wheel() {
       <Button title="Крутить ещё" variant="secondary" disabled={spinning} onPress={run} />
       <Button title="В меню" variant="secondary" onPress={() => router.replace('/menu')} />
     </Screen>
+  );
+}
+
+function AudienceLine({ value }: { value: string }) {
+  const audience = findAudience(value);
+  return (
+    <Body muted>
+      Перед кем: {audience ? `${audience.icon} ${audience.name} — им важно: ${audience.focus.toLowerCase()}` : value}
+    </Body>
   );
 }
 
