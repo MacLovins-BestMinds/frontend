@@ -4,6 +4,7 @@ import { env } from '@/config/env';
 
 import { mocks } from './mocks';
 import type {
+  AuthSession,
   Daily,
   Delivery,
   Finish,
@@ -14,8 +15,10 @@ import type {
   Mode,
   OwnPitchInput,
   Profile,
+  Progress,
   RefineResponse,
   Round,
+  RoundReview,
   Spin,
   User,
 } from './types';
@@ -26,9 +29,25 @@ function mocked<T>(value: T): Promise<T> {
   return new Promise((resolve) => setTimeout(() => resolve(value), MOCK_DELAY_MS));
 }
 
+let token: string | null = null;
+let onSignedOut: () => void = () => {};
+
+/** Токен вошедшего пользователя: с ним идёт каждый запрос. null — выйти. */
+export function setAuthToken(value: string | null) {
+  token = value;
+}
+
+/** Что сделать, когда сервер перестал принимать токен (истёк или пользователь удалён). */
+export function onUnauthorized(handler: () => void) {
+  onSignedOut = handler;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (!env.apiUrl) throw new Error('EXPO_PUBLIC_API_URL is not set');
-  const res = await fetch(env.apiUrl.replace(/\/$/, '') + path, init);
+  const headers = { ...(init?.headers as Record<string, string> | undefined), ...(token ? { Authorization: `Bearer ${token}` } : {}) };
+  const res = await fetch(env.apiUrl.replace(/\/$/, '') + path, { ...init, headers });
+  // вход по неверному паролю тоже отвечает 401 — выходим только там, где токен был отправлен
+  if (res.status === 401 && token && !path.startsWith('/api/auth/')) onSignedOut();
   if (!res.ok) {
     let detail = '';
     try {
@@ -69,8 +88,20 @@ export function mediaUrl(path: string): string {
 }
 
 export const api = {
-  auth: (nick: string) =>
-    env.useMocks ? mocked(mocks.auth(nick)) : post<User>('/api/game/auth', { nick }),
+  /** Вход по нику и паролю. */
+  login: (nick: string, password: string) =>
+    env.useMocks ? mocked(mocks.session(nick)) : post<AuthSession>('/api/auth/login', { nick, password }),
+
+  /** Новый аккаунт. Ник, заведённый раньше без пароля, закрепляется этим паролем вместе с историей. */
+  register: (nick: string, password: string) =>
+    env.useMocks ? mocked(mocks.session(nick)) : post<AuthSession>('/api/auth/register', { nick, password }),
+
+  /** История всех раундов и трекер прогресса вошедшего пользователя. */
+  progress: () => (env.useMocks ? mocked(mocks.progress()) : request<Progress>('/api/game/progress')),
+
+  /** Разбор раунда из истории. */
+  roundReview: (roundId: string) =>
+    env.useMocks ? mocked(mocks.roundReview(roundId)) : request<RoundReview>(`/api/game/rounds/${roundId}/review`),
 
   spin: () => (env.useMocks ? mocked(mocks.spin()) : request<Spin>('/api/game/spin')),
 

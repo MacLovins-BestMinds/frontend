@@ -1,5 +1,5 @@
 import { Redirect, router } from 'expo-router';
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useRef } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { TimelineEvent } from '@/api/types';
@@ -15,6 +15,7 @@ import { Button, Card, Container, H1, H3, Label, Muted, P, Page, Small } from '@
 const MARK: Record<TimelineEvent['type'], { color: string; name: string }> = {
   filler: { color: c.markFiller, name: 'filler word' },
   repeat: { color: c.markRepeat, name: 'repeat' },
+  profanity: { color: c.markSwear, name: 'swearing' },
   long_pause: { color: c.markPause, name: 'pause mid-phrase' },
   hesitation: { color: c.markPause, name: 'hesitation' },
   pace: { color: c.markPace, name: 'pace' },
@@ -87,9 +88,8 @@ function markFillersByText(transcript: string, events: TimelineEvent[]): Piece[]
 
 export default function Result() {
   const { wide } = useLayout();
-  const { result, delivery, juryAnswers, juryQuestions, pitchAudioUri, pitchVideoUri, pitchVideoOffset, mode } = useGame();
+  const { result, delivery, juryAnswers, juryQuestions, pitchAudioUri, pitchVideoUri, pitchVideoOffset, mode, reviewOf } = useGame();
   const player = useRef<PitchPlayerHandle>(null);
-  const [playback, setPlayback] = useState({ time: 0, playing: false });
 
   const pieces = useMemo(() => (delivery ? markTranscript(delivery.transcript, delivery.events) : []), [delivery]);
 
@@ -112,7 +112,7 @@ export default function Result() {
   const away = (delivery?.events ?? [])
     .filter((e) => e.type === 'gaze_off')
     .map((e) => ({ from: e.t, to: e.t + Number(e.text.match(/\d+(\.\d+)?/)?.[0] ?? 0) }));
-  const awayNow = away.some((s) => playback.time >= s.from && playback.time <= s.to);
+  const marks = (delivery?.events ?? []).map((e) => ({ t: e.t, color: MARK[e.type]?.color ?? c.markPause }));
   const contact = delivery?.metrics.gaze_on_ratio;
   const longest = Math.round(Math.max(0, ...away.map((s) => s.to - s.from)));
 
@@ -122,7 +122,14 @@ export default function Result() {
         <Button title="Menu" variant="secondary" size="sm" onPress={() => router.replace('/menu')} />
       </AppHeader>
       <Container style={styles.main}>
-        <H1 style={!wide && styles.titleNarrow}>{wide ? 'Pitch review' : 'Review'}</H1>
+        <View style={styles.head}>
+          <H1 style={!wide && styles.titleNarrow}>{wide ? 'Pitch review' : 'Review'}</H1>
+          {reviewOf && (
+            <Muted>
+              From your history: {reviewOf.title}, {new Date(reviewOf.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}.
+            </Muted>
+          )}
+        </View>
 
         <View style={[styles.top, wide && styles.topWide]}>
           <View style={[styles.score, wide && styles.scoreWide]}>
@@ -155,7 +162,14 @@ export default function Result() {
               {pitchVideoUri ? (
                 <View style={[styles.watch, wide && styles.watchWide]}>
                   <View style={wide ? styles.watchVideo : undefined}>
-                    <PitchVideo uri={pitchVideoUri} offset={pitchVideoOffset} time={playback.time} playing={playback.playing} note={awayNow ? 'eyes off the room' : undefined} />
+                    <PitchVideo
+                      ref={player}
+                      uri={pitchVideoUri}
+                      offset={pitchVideoOffset}
+                      fallbackDuration={duration}
+                      marks={marks}
+                      notes={away.map((s) => ({ ...s, text: 'eyes off the room' }))}
+                    />
                   </View>
                   <View style={styles.contact}>
                     <Label>Eye contact</Label>
@@ -171,29 +185,23 @@ export default function Result() {
                     ) : (
                       <Muted>Eye contact is not measured in the browser yet, so it is not part of your score. Watch the recording: are your eyes on the room?</Muted>
                     )}
+                    <Small>Tap a marker in the text to watch that moment, or drag the slider.</Small>
                   </View>
                 </View>
-              ) : null}
-              {pitchAudioUri ? (
+              ) : pitchAudioUri ? (
                 <>
-                  <PitchPlayer
-                    ref={player}
-                    uri={pitchAudioUri}
-                    fallbackDuration={duration}
-                    marks={delivery.events.map((e) => ({ t: e.t, color: MARK[e.type]?.color ?? c.markPause }))}
-                    onTime={(time, playing) => setPlayback({ time, playing })}
-                  />
+                  <PitchPlayer ref={player} uri={pitchAudioUri} fallbackDuration={duration} marks={marks} />
                   <Small>Tap a marker in the text to play from that moment, or drag the slider.</Small>
                 </>
               ) : (
-                <Small>The recording of this pitch is not available — markers only show the time.</Small>
+                <Small>{reviewOf ? 'Recordings are not stored, so this round has only the transcript and the marks.' : 'The recording of this pitch is not available — markers only show the time.'}</Small>
               )}
             </Card>
             <Card flat style={[styles.transcript, wide && styles.transcriptWide]}>
               <View style={styles.transcriptHead}>
                 <H3 style={styles.transcriptTitle}>Transcript</H3>
                 <View style={styles.legend}>
-                  {[...LEGEND, ...(away.length ? (['gaze_off'] as const) : [])].map((t) => (
+                  {[...LEGEND, ...(delivery.events.some((e) => e.type === 'profanity') ? (['profanity'] as const) : []), ...(away.length ? (['gaze_off'] as const) : [])].map((t) => (
                     <View key={t} style={styles.legendItem}>
                       <View style={[styles.swatch, { backgroundColor: MARK[t].color }]} />
                       <Text style={styles.legendText}>{MARK[t].name}</Text>
@@ -275,8 +283,12 @@ export default function Result() {
         )}
 
         <View style={[styles.actions, !wide && styles.actionsNarrow]}>
-          <Button title="Another round" onPress={() => router.replace('/wheel')} />
-          <Button title="Menu" variant="secondary" onPress={() => router.replace('/menu')} />
+          {reviewOf ? (
+            <Button title="Back to your progress" onPress={() => router.replace('/profile')} />
+          ) : (
+            <Button title="Another round" onPress={() => router.replace('/wheel')} />
+          )}
+          <Button title={reviewOf ? 'Menu' : 'Your progress'} variant="secondary" onPress={() => router.replace(reviewOf ? '/menu' : '/profile')} />
         </View>
       </Container>
     </Page>
@@ -286,6 +298,7 @@ export default function Result() {
 const styles = StyleSheet.create({
   main: { paddingTop: 8, paddingBottom: 64, gap: 24 },
   grow: { flex: 1 },
+  head: { gap: 4 },
   titleNarrow: { fontSize: 26, lineHeight: 32 },
   top: { gap: 20 },
   topWide: { flexDirection: 'row', alignItems: 'stretch', gap: 28 },

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import { Image, StyleSheet, View } from 'react-native';
 
 import { c } from '@/design/theme';
@@ -92,7 +92,7 @@ type AudienceSceneProps = { attention: number; width: number; height: number };
  * Зал на весь экран: стена и пол, толпа силуэтов, десять живых зрителей, жюри за столом, кулисы.
  * Раскладка — горизонтальная или вертикальная — выбирается по размеру окна, сцена заполняет его целиком.
  */
-export function AudienceScene({ attention, width, height }: AudienceSceneProps) {
+function Scene({ attention, width, height }: AudienceSceneProps) {
   const tick = useTick();
   const orientation: Orientation = width > height ? 'landscape' : 'portrait';
   const scene = SCENE[orientation];
@@ -139,6 +139,12 @@ export function AudienceScene({ attention, width, height }: AudienceSceneProps) 
     </View>
   );
 }
+
+/** Сцена перерисовывается, только когда меняется ступень реакции зала или размер окна — не на каждый шаг шкалы. */
+export const AudienceScene = memo(
+  Scene,
+  (a, b) => a.width === b.width && a.height === b.height && moods(a.attention, 10).join() === moods(b.attention, 10).join(),
+);
 
 const styles = StyleSheet.create({
   window: { overflow: 'hidden', backgroundColor: c.cream },

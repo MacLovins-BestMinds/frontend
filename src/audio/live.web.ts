@@ -1,6 +1,7 @@
 import { env } from '@/config/env';
 
 import type { LiveEvent, LiveHandlers } from './live';
+import { acquireMic, releaseMic } from './mic.web';
 
 export type { LiveEvent, LiveHandlers } from './live';
 
@@ -19,7 +20,7 @@ const NOISE_WINDOW = 12; // фон — самый тихий кадр за по�
 export function startLive(roundId: string | null, { onEvent, onVoice }: LiveHandlers): () => void {
   let stopped = false;
   let ctx: AudioContext | null = null;
-  let stream: MediaStream | null = null;
+  let holdsMic = true;
   const quietest: number[] = []; // самый тихий кадр каждого из последних кусков
   let ws: WebSocket | null = null;
   if (roundId) {
@@ -35,11 +36,9 @@ export function startLive(roundId: string | null, { onEvent, onVoice }: LiveHand
     };
   }
 
-  navigator.mediaDevices
-    ?.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } })
+  acquireMic()
     .then((s) => {
-      if (stopped) return s.getTracks().forEach((t) => t.stop());
-      stream = s;
+      if (stopped) return;
       ctx = new AudioContext({ sampleRate: SAMPLE_RATE });
       const source = ctx.createMediaStreamSource(s);
       const node = ctx.createScriptProcessor(CHUNK, 1, 1);
@@ -66,11 +65,15 @@ export function startLive(roundId: string | null, { onEvent, onVoice }: LiveHand
       source.connect(node);
       node.connect(ctx.destination);
     })
-    .catch((e) => console.warn('The live audio stream did not start', e));
+    .catch((e) => {
+      holdsMic = false;
+      console.warn('The live audio stream did not start', e);
+    });
 
   return () => {
     stopped = true;
-    stream?.getTracks().forEach((t) => t.stop());
+    if (holdsMic) releaseMic();
+    holdsMic = false;
     ctx?.close().catch(() => {});
     if (ws && ws.readyState <= WebSocket.OPEN) ws.close();
   };

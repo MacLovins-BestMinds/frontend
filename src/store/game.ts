@@ -2,32 +2,48 @@ import { create } from 'zustand';
 
 import { Platform } from 'react-native';
 
-import type { Case, Delivery, Finish, JuryAnswer, JuryQuestion, Mode, OwnPitchInput, Round, User } from '@/api/types';
+import { onUnauthorized, setAuthToken } from '@/api/client';
+import type { Case, Delivery, Finish, HistoryRound, JuryAnswer, JuryQuestion, Mode, OwnPitchInput, Round, RoundReview, User } from '@/api/types';
 
-const USER_KEY = 'stage-zero-user';
+const SESSION_KEY = 'stage-zero-session';
+
+type Saved = { user: User; token: string };
 
 // На сайте помним вход между перезагрузками; в приложении пока нет — нужно отдельное хранилище.
-function loadUser(): User | null {
+function loadSession(): Saved | null {
   if (Platform.OS !== 'web' || typeof localStorage === 'undefined') return null;
   try {
-    return JSON.parse(localStorage.getItem(USER_KEY) ?? 'null');
+    const saved = JSON.parse(localStorage.getItem(SESSION_KEY) ?? 'null') as Saved | null;
+    return saved?.user && saved.token ? saved : null;
   } catch {
     return null;
   }
 }
 
-function saveUser(user: User | null) {
+function saveSession(saved: Saved | null) {
   if (Platform.OS !== 'web' || typeof localStorage === 'undefined') return;
   try {
-    if (user) localStorage.setItem(USER_KEY, JSON.stringify(user));
-    else localStorage.removeItem(USER_KEY);
+    if (saved) localStorage.setItem(SESSION_KEY, JSON.stringify(saved));
+    else localStorage.removeItem(SESSION_KEY);
   } catch {
     // хранилище недоступно — просто не запоминаем
   }
 }
 
+const saved = loadSession();
+setAuthToken(saved?.token ?? null);
+
 type GameState = {
   user: User | null;
+  token: string | null;
+  /** Открыт разбор старого раунда из истории (записи у него нет); null — только что сыгранный раунд. */
+  reviewOf: HistoryRound | null;
+  /** Какой камерой снимать выступление: фронтальной или задней. */
+  camera: 'user' | 'environment';
+  setCamera: (camera: 'user' | 'environment') => void;
+  signIn: (user: User, token: string) => void;
+  signOut: () => void;
+  openReview: (review: RoundReview) => void;
   mode: Mode;
   topic: Case | null;
   ownPitch: OwnPitchInput | null;
@@ -44,7 +60,6 @@ type GameState = {
   pitchVideoUri: string | null;
   pitchVideoOffset: number;
   setPitchVideo: (uri: string | null, offset: number) => void;
-  setUser: (user: User | null) => void;
   setJuryQuestions: (questions: JuryQuestion[]) => void;
   setPitchAudio: (uri: string | null) => void;
   startTopic: (mode: Mode, topic: Case) => void;
@@ -57,7 +72,10 @@ type GameState = {
 };
 
 export const useGame = create<GameState>((set) => ({
-  user: loadUser(),
+  user: saved?.user ?? null,
+  token: saved?.token ?? null,
+  reviewOf: null,
+  camera: 'user',
   juryQuestions: [],
   pitchAudioUri: null,
   pitchVideoUri: null,
@@ -71,15 +89,35 @@ export const useGame = create<GameState>((set) => ({
   juryAnswers: [],
   result: null,
 
-  setUser: (user) => {
-    saveUser(user);
-    set({ user });
+  setCamera: (camera) => set({ camera }),
+  signIn: (user, token) => {
+    setAuthToken(token);
+    saveSession({ user, token });
+    set({ user, token });
   },
+  signOut: () => {
+    setAuthToken(null);
+    saveSession(null);
+    set({ user: null, token: null, round: null, delivery: null, result: null, reviewOf: null, juryAnswers: [], juryQuestions: [], pitchAudioUri: null, pitchVideoUri: null });
+  },
+  openReview: (review) =>
+    set({
+      reviewOf: review.round,
+      mode: review.round.mode as Mode,
+      topic: { id: review.round.id, title: review.round.title, brief: '', audience: '' },
+      round: null,
+      delivery: review.delivery,
+      juryQuestions: review.jury_questions,
+      juryAnswers: review.jury_answers,
+      result: review.result,
+      pitchAudioUri: null,
+      pitchVideoUri: null,
+    }),
   setJuryQuestions: (juryQuestions) => set({ juryQuestions }),
   setPitchAudio: (pitchAudioUri) => set({ pitchAudioUri }),
   setPitchVideo: (pitchVideoUri, pitchVideoOffset) => set({ pitchVideoUri, pitchVideoOffset }),
   startTopic: (mode, topic) =>
-    set({ mode, topic, ownPitch: null, round: null, notes: '', delivery: null, juryAnswers: [], juryQuestions: [], pitchAudioUri: null, pitchVideoUri: null, result: null }),
+    set({ mode, topic, ownPitch: null, round: null, notes: '', delivery: null, juryAnswers: [], juryQuestions: [], pitchAudioUri: null, pitchVideoUri: null, result: null, reviewOf: null }),
   startOwnPitch: (own) =>
     set({
       mode: 'own',
@@ -98,6 +136,7 @@ export const useGame = create<GameState>((set) => ({
       pitchAudioUri: null,
       pitchVideoUri: null,
       result: null,
+      reviewOf: null,
     }),
   setRound: (round) => set({ round }),
   setNotes: (notes) => set({ notes }),
@@ -106,7 +145,10 @@ export const useGame = create<GameState>((set) => ({
   setResult: (result) =>
     set((s) => {
       const user = s.user ? { ...s.user, rank: result.rank } : s.user;
-      saveUser(user);
+      if (user && s.token) saveSession({ user, token: s.token });
       return { result, user };
     }),
 }));
+
+// сервер перестал принимать токен — выходим, экраны сами вернут на главную
+onUnauthorized(() => useGame.getState().signOut());

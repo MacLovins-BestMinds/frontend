@@ -33,7 +33,7 @@ export type Round = {
 };
 
 export type TimelineEvent = {
-  type: 'filler' | 'repeat' | 'long_pause' | 'hesitation' | 'pace' | 'gaze_off' | 'good_pause';
+  type: 'filler' | 'repeat' | 'profanity' | 'long_pause' | 'hesitation' | 'pace' | 'gaze_off' | 'good_pause';
   t: number;
   text: string;
   /** Место в transcript (символы). start === end — точка между словами (пауза, темп). */
@@ -122,3 +122,61 @@ export type OwnPitchInput = {
 export type RoundSummary = { id: string; mode: string; total: number; content: number; delivery: number; jury: number; created_at: string };
 
 export type Profile = { nick: string; rank: Rank; last_rounds: RoundSummary[] };
+
+/** Вход по нику и паролю: токен уходит в заголовке Authorization каждого запроса. */
+export type AuthSession = { access_token: string; user: User };
+
+/** Один сыгранный раунд в истории: баллы и привычки речи из разбора. */
+export type HistoryRound = {
+  id: string;
+  mode: string;
+  title: string;
+  created_at: string;
+  total: number;
+  content: number;
+  delivery: number;
+  jury: number;
+  duration_sec: number | null;
+  wpm: number | null;
+  fillers_per_min: number | null;
+  long_pauses: number | null;
+  repeats: number | null;
+  gaze_on_ratio: number | null;
+};
+
+/** Среднее за последние 5 раундов и изменение к 5 предыдущим. */
+export type SkillTrend = {
+  key: string;
+  title: string;
+  value: number | null;
+  delta: number | null;
+  better: 'higher' | 'lower' | 'range';
+  unit: string;
+};
+
+export type Insight = { kind: 'good' | 'focus'; title: string; text: string };
+
+export type Progress = {
+  nick: string;
+  rank: Rank;
+  rank_score: number;
+  next_rank: { title: string; points_needed: number } | null;
+  rounds_total: number;
+  minutes_total: number;
+  average: number;
+  best: number;
+  streak_days: number;
+  skills: SkillTrend[];
+  habits: SkillTrend[];
+  insights: Insight[];
+  history: HistoryRound[];
+};
+
+/** Разбор раунда из истории: без записи — звук и видео на сервере не хранятся. */
+export type RoundReview = {
+  round: HistoryRound;
+  result: Finish;
+  delivery: Delivery | null;
+  jury_questions: JuryQuestion[];
+  jury_answers: (JuryAnswer & { question_id: string })[];
+};
