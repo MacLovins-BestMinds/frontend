@@ -33,7 +33,7 @@ export type Round = {
 };
 
 export type TimelineEvent = {
-  type: 'filler' | 'long_pause' | 'pace' | 'gaze_off' | 'good_pause';
+  type: 'filler' | 'long_pause' | 'hesitation' | 'pace' | 'gaze_off' | 'good_pause';
   t: number;
   text: string;
 };

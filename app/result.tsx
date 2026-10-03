@@ -9,13 +9,14 @@ import { TREND, colors, formatTime } from '@/ui/theme';
 const EVENT_COLOR: Record<TimelineEvent['type'], string> = {
   filler: colors.bad,
   long_pause: colors.warn,
+  hesitation: colors.warn,
   pace: colors.warn,
   gaze_off: colors.bad,
   good_pause: colors.good,
 };
 
 const STRETCH_SEC = 15;
-const MISTAKES: TimelineEvent['type'][] = ['filler', 'long_pause', 'pace'];
+const MISTAKES: TimelineEvent['type'][] = ['filler', 'long_pause', 'hesitation', 'pace'];
 
 /** Сколько 15-секундных отрезков прошли без паразитов, долгих пауз и сбоев темпа. */
 function cleanStretches(events: TimelineEvent[], durationSec: number): { clean: number; total: number } {
