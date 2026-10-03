@@ -14,10 +14,28 @@ const EVENT_COLOR: Record<TimelineEvent['type'], string> = {
   good_pause: colors.good,
 };
 
+const STRETCH_SEC = 15;
+const MISTAKES: TimelineEvent['type'][] = ['filler', 'long_pause', 'pace'];
+
+/** Сколько 15-секундных отрезков прошли без паразитов, долгих пауз и сбоев темпа. */
+function cleanStretches(events: TimelineEvent[], durationSec: number): { clean: number; total: number } {
+  const total = Math.floor(durationSec / STRETCH_SEC);
+  const dirty = new Set(
+    events.filter((e) => MISTAKES.includes(e.type)).map((e) => Math.floor(e.t / STRETCH_SEC)),
+  );
+  let clean = 0;
+  for (let i = 0; i < total; i++) if (!dirty.has(i)) clean++;
+  return { clean, total };
+}
+
 export default function Result() {
   const { result, delivery, juryAnswers } = useGame();
 
   if (!result) return <Redirect href="/" />;
+
+  // взгляд пока не отслеживается (нет камеры) — не показываем его в разборе
+  const events = delivery ? delivery.events.filter((e) => e.type !== 'gaze_off') : [];
+  const stretches = delivery ? cleanStretches(delivery.events, delivery.metrics.duration_sec) : null;
 
   const parts = [
     { title: 'Содержание', weight: '40%', value: result.content },
@@ -56,8 +74,8 @@ export default function Result() {
           </Card>
           <Card>
             <Label>Моменты выступления</Label>
-            {delivery.events.length === 0 && <Body muted>Ошибок не отмечено.</Body>}
-            {delivery.events.map((e, i) => (
+            {events.length === 0 && <Body muted>Ошибок не отмечено.</Body>}
+            {events.map((e, i) => (
               <View key={i} style={styles.event}>
                 <View style={[styles.dot, { backgroundColor: EVENT_COLOR[e.type] ?? colors.muted }]} />
                 <Body>
@@ -71,6 +89,11 @@ export default function Result() {
             <Body>Темп: {delivery.metrics.wpm} слов в минуту</Body>
             <Body>Слова-паразиты: {delivery.metrics.fillers}</Body>
             <Body>Долгие паузы: {delivery.metrics.long_pauses}</Body>
+            {stretches && stretches.total > 0 && (
+              <Body>
+                Отрезков по {STRETCH_SEC} секунд без ошибок: {stretches.clean} из {stretches.total}
+              </Body>
+            )}
             <Body>Длительность: {formatTime(delivery.metrics.duration_sec)}</Body>
           </Card>
           <Card>
