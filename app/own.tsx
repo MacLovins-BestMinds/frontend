@@ -4,43 +4,10 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { api } from '@/api/client';
 import type { AudienceId, RefineResponse } from '@/api/types';
+import { AUDIENCES } from '@/content/audiences';
 import { useGame } from '@/store/game';
 import { Body, Button, Card, ErrorText, Label, Screen, Title } from '@/ui/kit';
 import { colors } from '@/ui/theme';
-
-type AudienceItem = {
-  id: AudienceId;
-  name: string;
-  icon: string;
-  focus: string;
-};
-
-const AUDIENCES: AudienceItem[] = [
-  {
-    id: 'contest_jury',
-    name: 'Жюри конкурса',
-    icon: '🏆',
-    focus: 'Новизна идеи, масштабируемость и реализуемость',
-  },
-  {
-    id: 'business',
-    name: 'Бизнесмены',
-    icon: '💼',
-    focus: 'Деньги, бизнес-модель, рынок и окупаемость',
-  },
-  {
-    id: 'teachers',
-    name: 'Преподаватели',
-    icon: '🎓',
-    focus: 'Обоснованность, логика, глубина и последствия',
-  },
-  {
-    id: 'public',
-    name: 'Широкая публика',
-    icon: '👥',
-    focus: 'Простота, эмоциональная польза для человека',
-  },
-];
 
 export default function OwnPitch() {
   const user = useGame((s) => s.user);

@@ -90,12 +90,14 @@ export const api = {
       ? mocked(mocks.refine(mode))
       : post<RefineResponse>('/api/ai/refine', { text, audience, mode }),
 
-  delivery: async (roundId: string, audioUri: string | null, gaze: GazePoint[] = []) => {
+  delivery: async (roundId: string, audioUri: string | null, gaze: GazePoint[] = [], notes = '') => {
     if (env.useMocks) return mocked(mocks.delivery());
     if (!audioUri) throw new Error('Нет записи выступления');
     const form = new FormData();
     await appendAudio(form, audioUri);
     form.append('gaze', JSON.stringify(gaze));
+    // заметки с подготовки: ИИ подскажет, что из запланированного так и не прозвучало
+    if (notes.trim()) form.append('notes', notes.trim());
     return request<Delivery>(`/api/ai/rounds/${roundId}/delivery`, { method: 'POST', body: form });
   },
 

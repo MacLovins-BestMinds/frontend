@@ -1,9 +1,21 @@
+import { Linking, Pressable, StyleSheet, Text } from 'react-native';
+
 import type { Case } from '@/api/types';
+import { GENERAL_SOURCES, findAudience } from '@/content/audiences';
 
 import { Body, Card, Label } from './kit';
+import { colors } from './theme';
 
-/** Карточка темы с блоком «Что от тебя хотят». */
+function formatRange(minSec: number, maxSec: number): string {
+  if (maxSec < 60) return `${minSec}–${maxSec} секунд`;
+  return `${Math.round(minSec / 60)}–${Math.round(maxSec / 60)} минуты`;
+}
+
+/** Карточка темы, блок «Что от тебя хотят» и подсказки по аудитории с источниками. */
 export function Brief({ topic, minSec, maxSec }: { topic: Case; minSec: number; maxSec: number }) {
+  const audience = findAudience(topic.audience);
+  const sources = [...(audience?.sources ?? []), ...GENERAL_SOURCES];
+
   return (
     <>
       <Card>
@@ -13,13 +25,32 @@ export function Brief({ topic, minSec, maxSec }: { topic: Case; minSec: number; 
       </Card>
       <Card>
         <Label>Что от тебя хотят</Label>
-        <Body>• Питч идеи продукта: зачем он нужен и кому.</Body>
-        <Body>• Кому питчим: {topic.audience}.</Body>
-        <Body>
-          • Сколько: {Math.round(minSec / 60)}–{Math.round(maxSec / 60)} минуты.
-        </Body>
-        <Body>• Жюри проверит слабые места идеи и то, что ты реально скажешь.</Body>
+        <Body>• Кому: {audience ? `${audience.icon} ${audience.name}` : topic.audience}.</Body>
+        {audience && <Body>• Им важно: {audience.focus.toLowerCase()}.</Body>}
+        <Body>• Сколько говорить: {formatRange(minSec, maxSec)}.</Body>
+        {audience && <Body>• Жюри спросит: {audience.juryAsks.toLowerCase()}</Body>}
+      </Card>
+      {audience && (
+        <Card>
+          <Label>Как говорить с этой аудиторией</Label>
+          <Body muted>{audience.who}</Body>
+          {audience.tips.map((tip) => (
+            <Body key={tip}>• {tip}</Body>
+          ))}
+        </Card>
+      )}
+      <Card>
+        <Label>Почитать и посмотреть</Label>
+        {sources.map((s) => (
+          <Pressable key={s.url} onPress={() => Linking.openURL(s.url)} accessibilityRole="link">
+            <Text style={styles.link}>↗ {s.title}</Text>
+          </Pressable>
+        ))}
       </Card>
     </>
   );
 }
+
+const styles = StyleSheet.create({
+  link: { fontSize: 15, lineHeight: 22, color: colors.accent, textDecorationLine: 'underline' },
+});

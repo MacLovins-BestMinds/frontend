@@ -62,8 +62,8 @@ export default function Stage() {
       setAttention((a) => clamp(a + event.delta));
       setReaction(event.text);
     } else if (second % CLEAN_STREAK_SEC === 0) {
+      // зал понемногу теплеет; сообщение про «чистые» отрезки — только в разборе, по реальным событиям
       setAttention((a) => clamp(a + 3));
-      setReaction('15 секунд без ошибок — зал кивает');
     }
   }, [second, sending]);
 
@@ -74,7 +74,7 @@ export default function Stage() {
     setError('');
     try {
       audioUri.current = audioUri.current ?? (await recorder.stop());
-      setDelivery(await api.delivery(round.round_id, audioUri.current));
+      setDelivery(await api.delivery(round.round_id, audioUri.current, [], notes));
       router.replace('/jury');
     } catch (e) {
       setError(`Разбор не получен: ${(e as Error).message}`);
