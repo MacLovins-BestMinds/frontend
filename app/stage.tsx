@@ -210,7 +210,7 @@ export default function Stage() {
     const id = setInterval(() => setElapsed(now()), 250);
     // живой поток: микрофон говорит залу, звучит ли голос, а бэкенд присылает оговорки и оценку содержания
     startCamera.current?.();
-    stopLive.current = startLive(env.useMocks ? null : (round?.round_id ?? null), { onVoice, onEvent }, pace);
+    stopLive.current = startLive(env.useMocks ? null : (round?.round_id ?? null), { onVoice, onEvent }, pace, maxSec);
     return () => {
       clearInterval(id);
       if (hintTimer.current) clearTimeout(hintTimer.current);

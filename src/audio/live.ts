@@ -1,7 +1,5 @@
-import { env } from '@/config/env';
-import { getLang } from '@/i18n';
-
 import { setLiveSink } from './liveFeed';
+import { openLiveSocket } from './liveSocket';
 
 export type LiveEvent =
   | { type: 'filler'; t: number; word: string; burst: boolean }
@@ -30,22 +28,15 @@ const NOISE_WINDOW = 12;
  * Громкость каждого куска говорит залу, звучит ли голос (onVoice), а сами куски уходят в WS /api/ai/live,
  * откуда приходят события. roundId = null — без сокета (моки). Запись должна быть запущена рекордером.
  */
-export function startLive(roundId: string | null, { onEvent, onVoice }: LiveHandlers, pace: 'slow' | 'normal' | 'fast' = 'normal'): () => void {
+export function startLive(
+  roundId: string | null,
+  { onEvent, onVoice }: LiveHandlers,
+  pace: 'slow' | 'normal' | 'fast' = 'normal',
+  maxSec?: number,
+): () => void {
   const quietest: number[] = [];
-  let ws: WebSocket | null = null;
-  if (roundId) {
-    const url = env.apiUrl.replace(/\/$/, '').replace(/^http/, 'ws') + `/api/ai/live?round_id=${encodeURIComponent(roundId)}&pace=${pace}&lang=${getLang()}`;
-    ws = new WebSocket(url);
-    ws.binaryType = 'arraybuffer';
-    ws.onmessage = (m) => {
-      try {
-        onEvent(JSON.parse(m.data as string) as LiveEvent);
-      } catch {
-        // не JSON — пропускаем
-      }
-    };
-    ws.onerror = () => console.warn('The live audio socket failed');
-  }
+  // сокет переподключается сам; null — без сокета (моки)
+  const ws = roundId ? openLiveSocket(roundId, pace, maxSec, onEvent) : null;
 
   setLiveSink((pcm) => {
     let sum = 0;
@@ -66,14 +57,14 @@ export function startLive(roundId: string | null, { onEvent, onVoice }: LiveHand
       if (quietest.length > NOISE_WINDOW) quietest.shift();
       onVoice(rms > Math.max(VOICE_MIN_RMS, Math.min(...quietest) * VOICE_OVER_NOISE));
     }
-    if (ws?.readyState !== WebSocket.OPEN) return;
+    if (!ws) return;
     // копия — ровно свой кусок: Int16Array может смотреть в больший буфер
     ws.send(pcm.slice().buffer);
   });
 
   return () => {
     setLiveSink(null);
-    if (ws && ws.readyState <= WebSocket.OPEN) ws.close();
+    ws?.close();
   };
 }
 
