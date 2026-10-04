@@ -1,5 +1,6 @@
-import { memo, useEffect, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Image, StyleSheet, View } from 'react-native';
+import Animated, { Easing, useAnimatedStyle, useSharedValue, withDelay, withRepeat, withSequence, withSpring, withTiming } from 'react-native-reanimated';
 
 import { c } from '@/design/theme';
 
@@ -37,11 +38,40 @@ export function useTick() {
   return tick;
 }
 
-type SpriteProps = { name: string; mood: Mood; tick: number; boredSince: number; style: object };
+type SpriteProps = { name: string; mood: Mood; tick: number; boredSince: number; style: { left: number; top: number; width: number; height: number } };
 
-/** Один зритель. Все кадры лежат стопкой, виден только текущий — так кадры не мигают при смене. */
+const BREATH = 0.016; // стоя зритель чуть «дышит»: на столько растёт и сжимается
+const POP = 0.075; // на столько он дёргается, когда меняется настроение
+
+/**
+ * Один зритель. Все кадры лежат стопкой, виден только текущий — так кадры не мигают при смене.
+ * Фигура слегка дышит (у каждого свой ритм), а при смене настроения коротко подпрыгивает — переход видно сразу.
+ */
 function Sprite({ name, mood, tick, boredSince, style }: SpriteProps) {
   const ch = CHARACTERS[name];
+  // у каждого свой ритм, чтобы зал не дышал строем
+  const seed = useMemo(() => [...name].reduce((sum, ch_) => sum + ch_.charCodeAt(0), 0), [name]);
+  const breath = useSharedValue(0);
+  const pop = useSharedValue(0);
+  const seen = useRef(mood);
+  useEffect(() => {
+    breath.value = withDelay((seed * 37) % 1400, withRepeat(withTiming(1, { duration: 2300 + (seed % 9) * 170, easing: Easing.inOut(Easing.sin) }), -1, true));
+    // дыхание запускается один раз
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    if (seen.current === mood) return;
+    seen.current = mood;
+    // резкий рывок и мягкий возврат
+    pop.value = withSequence(withTiming(1, { duration: 90, easing: Easing.out(Easing.quad) }), withSpring(0, { damping: 7, stiffness: 190 }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mood]);
+  const height = style.height;
+  const alive = useAnimatedStyle(() => {
+    const scale = 1 + BREATH * breath.value + POP * pop.value;
+    // растём от ступней: фигура не «плавает» над полом, а при рывке чуть подпрыгивает
+    return { transform: [{ translateY: (-(scale - 1) * height) / 2 - pop.value * height * 0.025 }, { scale }] };
+  });
   const frames = useMemo(() => [ch.idle, ch.surprised, ...ch.intro, ...ch.loop], [ch]);
   let current = 0;
   if (mood === 'surprised') current = 1;
@@ -50,11 +80,11 @@ function Sprite({ name, mood, tick, boredSince, style }: SpriteProps) {
     current = t < ch.intro.length ? 2 + t : 2 + ch.intro.length + (Math.floor((t - ch.intro.length) / ch.hold) % ch.loop.length);
   }
   return (
-    <View style={style}>
+    <Animated.View style={[{ position: 'absolute' }, style, alive]}>
       {frames.map((src, i) => (
         <Image key={i} source={src} style={[StyleSheet.absoluteFill, styles.fill, { opacity: i === current ? 1 : 0 }]} resizeMode="contain" />
       ))}
-    </View>
+    </Animated.View>
   );
 }
 
@@ -129,7 +159,7 @@ function Scene({ attention, width, height }: AudienceSceneProps) {
               mood={current[i]}
               tick={tick}
               boredSince={since[i] ?? tick}
-              style={{ position: 'absolute', left: slot.x * k - sp.ax * s, top: slot.baseline * k - sp.ay * s, width: sp.w * s, height: sp.h * s }}
+              style={{ left: slot.x * k - sp.ax * s, top: slot.baseline * k - sp.ay * s, width: sp.w * s, height: sp.h * s }}
             />
           );
         })}
