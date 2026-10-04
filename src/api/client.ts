@@ -6,6 +6,11 @@ import { mocks } from './mocks';
 import type {
   AuthSession,
   Daily,
+  Difficulty,
+  FitSlides,
+  Pace,
+  PickedFile,
+  Signup,
   Delivery,
   Finish,
   GazePoint,
@@ -88,13 +93,41 @@ export function mediaUrl(path: string): string {
 }
 
 export const api = {
-  /** Вход по нику и паролю. */
-  login: (nick: string, password: string) =>
-    env.useMocks ? mocked(mocks.session(nick)) : post<AuthSession>('/api/auth/login', { nick, password }),
+  /** Вход по почте и паролю. */
+  login: (email: string, password: string) =>
+    env.useMocks ? mocked(mocks.session(email.split('@')[0])) : post<AuthSession>('/api/auth/login', { nick: email, password }),
 
-  /** Новый аккаунт. Ник, заведённый раньше без пароля, закрепляется этим паролем вместе с историей. */
-  register: (nick: string, password: string) =>
-    env.useMocks ? mocked(mocks.session(nick)) : post<AuthSession>('/api/auth/register', { nick, password }),
+  /** Что показать в форме входа: Client ID для кнопки Google (null — вход через Google на сервере выключен). */
+  authConfig: () =>
+    env.useMocks ? mocked<{ google_client_id: string | null }>({ google_client_id: null }) : request<{ google_client_id: string | null }>('/api/auth/config'),
+
+  /** Вход через Google: бэкенд проверяет ID-токен и сам заводит аккаунт при первом входе. */
+  google: (idToken: string) => post<AuthSession>('/api/auth/google', { id_token: idToken }),
+
+  /** Регистрация: почта, ник и пароль. На почту уходит код; ник, заведённый раньше без почты, сохраняет историю. */
+  signup: (email: string, nick: string, password: string) =>
+    env.useMocks
+      ? mocked<Signup>({ email, sent: false, dev_code: null, ...mocks.session(nick) })
+      : post<Signup>('/api/auth/signup', { email, nick, password }),
+
+  /** Подтверждение почты кодом из письма — после него вход выполнен. */
+  verify: (email: string, code: string, nick = 'tester') =>
+    env.useMocks ? mocked(mocks.session(nick)) : post<AuthSession>('/api/auth/verify', { email, code }),
+
+  resendCode: (email: string) =>
+    env.useMocks ? mocked<Signup>({ email, sent: false, dev_code: '123456' }) : post<Signup>('/api/auth/resend', { email }),
+
+  /** Подогнать текст питча под презентацию (PDF или PPTX): что говорить на каждом слайде. */
+  fitSlides: async (file: PickedFile, title: string, text: string, audience: string) => {
+    if (env.useMocks) return mocked(mocks.fitSlides());
+    const form = new FormData();
+    if (file.file) form.append('file', file.file, file.name);
+    else form.append('file', { uri: file.uri, name: file.name, type: file.mimeType ?? 'application/octet-stream' } as unknown as Blob);
+    form.append('title', title);
+    form.append('text', text);
+    form.append('audience', audience);
+    return request<FitSlides>('/api/ai/fit-slides', { method: 'POST', body: form });
+  },
 
   /** История всех раундов и трекер прогресса вошедшего пользователя. */
   progress: () => (env.useMocks ? mocked(mocks.progress()) : request<Progress>('/api/game/progress')),
@@ -103,16 +136,18 @@ export const api = {
   roundReview: (roundId: string) =>
     env.useMocks ? mocked(mocks.roundReview(roundId)) : request<RoundReview>(`/api/game/rounds/${roundId}/review`),
 
-  spin: () => (env.useMocks ? mocked(mocks.spin()) : request<Spin>('/api/game/spin')),
+  /** Колесо: случайная тема выбранного уровня. */
+  spin: (difficulty: Difficulty = 'easy') => (env.useMocks ? mocked(mocks.spin()) : request<Spin>(`/api/game/spin?difficulty=${difficulty}`)),
 
   daily: () => (env.useMocks ? mocked(mocks.daily()) : request<Daily>('/api/game/daily')),
 
-  createRound: (userId: string, mode: Mode, caseId?: string, own?: OwnPitchInput) =>
+  createRound: (userId: string, mode: Mode, caseId?: string, own?: OwnPitchInput, difficulty: Difficulty = 'easy') =>
     env.useMocks
       ? mocked(mocks.createRound())
       : post<Round>('/api/game/rounds', {
           user_id: userId,
           mode,
+          difficulty,
           case_id: mode === 'own' ? undefined : caseId,
           own: mode === 'own' ? own : undefined,
         }),
@@ -122,7 +157,7 @@ export const api = {
       ? mocked(mocks.refine(mode))
       : post<RefineResponse>('/api/ai/refine', { text, audience, mode }),
 
-  delivery: async (roundId: string, audioUri: string | null, gaze: GazePoint[] = [], notes = '') => {
+  delivery: async (roundId: string, audioUri: string | null, gaze: GazePoint[] = [], notes = '', pace: Pace = 'normal') => {
     if (env.useMocks) return mocked(mocks.delivery());
     if (!audioUri) throw new Error('There is no recording of the pitch');
     const form = new FormData();
@@ -130,20 +165,22 @@ export const api = {
     form.append('gaze', JSON.stringify(gaze));
     // заметки с подготовки: ИИ подскажет, что из запланированного так и не прозвучало
     if (notes.trim()) form.append('notes', notes.trim());
+    form.append('pace', pace);
     return request<Delivery>(`/api/ai/rounds/${roundId}/delivery`, { method: 'POST', body: form });
   },
 
-  juryQuestions: async (roundId: string) => {
+  juryQuestions: async (roundId: string, difficulty: Difficulty = 'easy') => {
     if (env.useMocks) return mocked(mocks.juryQuestions());
-    const res = await post<{ questions: JuryQuestion[] }>(`/api/ai/rounds/${roundId}/jury/questions`);
+    const res = await post<{ questions: JuryQuestion[] }>(`/api/ai/rounds/${roundId}/jury/questions?difficulty=${difficulty}`);
     return res.questions;
   },
 
-  juryAnswer: async (roundId: string, questionId: string, audioUri: string | null) => {
+  juryAnswer: async (roundId: string, questionId: string, audioUri: string | null, difficulty: Difficulty = 'easy') => {
     if (env.useMocks) return mocked(mocks.juryAnswer());
     if (!audioUri) throw new Error('There is no recording of the answer');
     const form = new FormData();
     form.append('question_id', questionId);
+    form.append('difficulty', difficulty);
     await appendAudio(form, audioUri);
     return request<JuryAnswer>(`/api/ai/rounds/${roundId}/jury/answer`, {
       method: 'POST',

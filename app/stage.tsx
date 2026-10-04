@@ -4,6 +4,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { api } from '@/api/client';
+import type { Difficulty } from '@/api/types';
 import { startLive, type LiveEvent } from '@/audio/live';
 import { useRecorder } from '@/audio/useRecorder';
 import { env } from '@/config/env';
@@ -19,13 +20,12 @@ import { Button } from '@/ui/primitives';
 
 // Шкала внимания — это то, что зал думает о последних секундах выступления. Она складывается из трёх вещей:
 // 1) звучит ли голос (сам по себе голос поднимает шкалу только до 60);
-// 2) содержание: раз в несколько секунд сервер оценивает, по теме ли и по делу ли последние слова (до ±35);
+// 2) содержание: раз в несколько секунд сервер оценивает, по теме ли и по делу ли последние слова (см. ROOM);
 // 3) оговорки: слова-паразиты и темп снимают баллы на 20 секунд, тишина и взгляд мимо зала — пока длятся.
 // Шкала ничего не копит: перестал говорить по делу — она уходит вниз за несколько секунд.
 const START_ATTENTION = 50; // середина шкалы — спокойный зал: никто не скучает и не удивлён
 const VOICE_BASE = 42; // зал, когда в комнате тишина, но ещё не скучно
 const VOICE_GAIN = 18; // столько добавляет непрерывная речь: 42 + 18 = 60 — потолок без содержания
-const CONTENT_GAIN = 0.7; // оценка содержания 0–100 → от −35 до +35
 const VOICE_WINDOW = 24; // доля речи считается за последние 12 секунд
 const SLIP_WINDOW_SEC = 20; // столько зал помнит оговорку
 const SLIP_MAX = 35;
@@ -48,6 +48,14 @@ const MOCK_CONTENT = [
   { score: 22, comment: 'Back to your topic' },
 ];
 
+// Уровень сложности меняет характер зала: насколько больно бьют оговорки, сколько тишины он терпит
+// и какое содержание его впечатляет (mid — оценка содержания, с которой зал не теряет и не прибавляет).
+const ROOM: Record<Difficulty, { slip: number; silence: number; mid: number; gain: number }> = {
+  easy: { slip: 0.7, silence: 4, mid: 45, gain: 0.7 },
+  medium: { slip: 1, silence: 3, mid: 50, gain: 0.7 },
+  hard: { slip: 1.6, silence: 2, mid: 60, gain: 0.85 },
+};
+
 const clamp = (v: number) => Math.max(0, Math.min(100, v));
 
 type Slip = { t: number; cost: number };
@@ -62,19 +70,19 @@ function slipCost(e: LiveEvent): number {
 }
 
 /** Куда стремится шкала прямо сейчас. content — оценка содержания 0–100 или null, если её ещё не было. */
-function goal(voice: number, content: number | null, slips: number, silent: number, away: number): number {
+function goal(voice: number, content: number | null, slips: number, silent: number, away: number, room: (typeof ROOM)[Difficulty]): number {
   let v = VOICE_BASE + VOICE_GAIN * voice;
-  if (content !== null) v += (content - 50) * CONTENT_GAIN;
-  v -= Math.min(SLIP_MAX, slips);
-  if (silent >= SILENCE_SEC) v -= Math.min(45, (silent - SILENCE_SEC + 1) * 8);
+  if (content !== null) v += (content - room.mid) * room.gain;
+  v -= Math.min(SLIP_MAX * room.slip, slips * room.slip);
+  if (silent >= room.silence) v -= Math.min(45, (silent - room.silence + 1) * 8);
   if (away >= AWAY_SEC) v -= Math.min(30, (away - AWAY_SEC + 1) * 6);
   return clamp(v);
 }
 
 export default function Stage() {
   useStayAwake();
-  const { user, topic, round, notes, camera, setCamera, setDelivery, setPitchAudio, setPitchVideo } = useGame();
-  const { width, height } = useLayout();
+  const { user, topic, round, notes, camera, pace, difficulty, setCamera, setDelivery, setPitchAudio, setPitchVideo } = useGame();
+  const { width, height, wide } = useLayout();
   const insets = useSafeAreaInsets();
   const recorder = useRecorder();
   const [elapsed, setElapsed] = useState(0);
@@ -140,11 +148,13 @@ export default function Stage() {
   };
   const onEvent = (e: LiveEvent) => {
     if (e.type === 'content') return onContent(e.score, e.comment);
-    const cost = slipCost(e);
+    // выбрал быстрый темп, а говоришь медленно — зал скучает вдвое сильнее
+    const dragging = e.type === 'pace' && e.verdict === 'slow' && pace === 'fast';
+    const cost = dragging ? 18 : slipCost(e);
     if (cost) slips.current.push({ t: now(), cost });
     if (e.type === 'filler') say(e.burst ? 'Fillers again — pause instead' : `Filler word: “${e.word}”`, 'bad');
     if (e.type === 'profanity') say('Watch your language!', 'bad');
-    if (e.type === 'pace') say(e.verdict === 'fast' ? 'Too fast — slow down' : 'Too slow — pick up the pace', 'bad');
+    if (e.type === 'pace') say(e.verdict === 'fast' ? 'Too fast — slow down' : dragging ? 'You chose a fast pace — speed up' : 'Too slow — pick up the pace', 'bad');
   };
 
   const minSec = env.useMocks ? MOCK_MIN_SEC : (round?.pitch_min_sec ?? 60);
@@ -155,7 +165,7 @@ export default function Stage() {
     startedAt.current = Date.now();
     const id = setInterval(() => setElapsed(now()), 250);
     // живой поток: микрофон говорит залу, звучит ли голос, а бэкенд присылает оговорки и оценку содержания
-    stopLive.current = startLive(env.useMocks ? null : (round?.round_id ?? null), { onVoice, onEvent });
+    stopLive.current = startLive(env.useMocks ? null : (round?.round_id ?? null), { onVoice, onEvent }, pace);
     return () => {
       clearInterval(id);
       if (hintTimer.current) clearTimeout(hintTimer.current);
@@ -204,12 +214,14 @@ export default function Stage() {
     }
     const away = awaySince.current === null ? 0 : t - awaySince.current;
 
-    level.current += (goal(voice, heard, slipTotal, silent, away) - level.current) * EASE;
+    level.current += (goal(voice, heard, slipTotal, silent, away, ROOM[difficulty]) - level.current) * EASE;
     setAttention(Math.round(level.current));
 
     // подсказки про тишину и взгляд — их видно сразу, без сервера
-    if (silent < SILENCE_SEC) silenceHinted.current = 0;
-    else if (silent >= 4 && silenceHinted.current < 4) {
+    // на трудном уровне зал замечает тишину раньше
+    const quiet = ROOM[difficulty].silence + 1;
+    if (silent < ROOM[difficulty].silence) silenceHinted.current = 0;
+    else if (silent >= quiet && silenceHinted.current < 4) {
       silenceHinted.current = 4;
       say(spoke.current ? 'You have gone quiet — keep talking' : 'The room is waiting — start talking', 'bad');
     } else if (silent >= 9 && silenceHinted.current < 9) {
@@ -235,7 +247,7 @@ export default function Stage() {
         capture.current = null;
         setPitchVideo(shot.current.videoUri, shot.current.videoOffset);
       }
-      setDelivery(await api.delivery(round.round_id, audioUri.current, shot.current?.gaze ?? [], notes));
+      setDelivery(await api.delivery(round.round_id, audioUri.current, shot.current?.gaze ?? [], notes, pace));
       router.replace('/jury');
     } catch (e) {
       setError(`Could not get the review: ${(e as Error).message}`);
@@ -320,7 +332,8 @@ export default function Stage() {
           facing={camera}
           onFacing={setCamera}
           onReady={(video, stream) => {
-            if (finished.current) return;
+            // видео в разборе показывается только на телефоне — на компьютере его не пишем, сцене легче
+            if (finished.current || wide) return;
             // камеру сменили — прежний кусок видео закрываем, запись идёт дальше с новой камеры
             capture.current?.stop();
             capture.current = startCapture(video, stream, {

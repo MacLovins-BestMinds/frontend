@@ -3,7 +3,7 @@ import { create } from 'zustand';
 import { Platform } from 'react-native';
 
 import { onUnauthorized, setAuthToken } from '@/api/client';
-import type { Case, Delivery, Finish, HistoryRound, JuryAnswer, JuryQuestion, Mode, OwnPitchInput, Round, RoundReview, User } from '@/api/types';
+import type { Case, Delivery, Difficulty, Finish, HistoryRound, Pace, JuryAnswer, JuryQuestion, Mode, OwnPitchInput, Round, RoundReview, User } from '@/api/types';
 
 const SESSION_KEY = 'stage-zero-session';
 
@@ -41,6 +41,12 @@ type GameState = {
   /** Какой камерой снимать выступление: фронтальной или задней. */
   camera: 'user' | 'environment';
   setCamera: (camera: 'user' | 'environment') => void;
+  /** Темп, которым игрок собирается говорить: спокойный, обычный или быстрый. */
+  pace: Pace;
+  setPace: (pace: Pace) => void;
+  /** Уровень сложности раунда. */
+  difficulty: Difficulty;
+  setDifficulty: (difficulty: Difficulty) => void;
   signIn: (user: User, token: string) => void;
   signOut: () => void;
   openReview: (review: RoundReview) => void;
@@ -76,6 +82,8 @@ export const useGame = create<GameState>((set) => ({
   token: saved?.token ?? null,
   reviewOf: null,
   camera: 'user',
+  pace: 'normal',
+  difficulty: 'easy',
   juryQuestions: [],
   pitchAudioUri: null,
   pitchVideoUri: null,
@@ -90,6 +98,8 @@ export const useGame = create<GameState>((set) => ({
   result: null,
 
   setCamera: (camera) => set({ camera }),
+  setPace: (pace) => set({ pace }),
+  setDifficulty: (difficulty) => set({ difficulty }),
   signIn: (user, token) => {
     setAuthToken(token);
     saveSession({ user, token });

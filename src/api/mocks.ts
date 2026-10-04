@@ -3,6 +3,7 @@
 
 import type {
   AuthSession,
+  FitSlides,
   Daily,
   Delivery,
   Finish,
@@ -70,6 +71,17 @@ export const mocks = {
   session: (nick: string): AuthSession => ({
     access_token: 'mock-token',
     user: { user_id: 'u_mock', nick, rank: { title: 'Pitcher', trend: 'up' } },
+  }),
+
+  fitSlides: (): FitSlides => ({
+    slides: [
+      { n: 1, title: 'The problem', kind: 'talk', text: 'Older people miss their medicine every day and end up in hospital.' },
+      { n: 2, title: 'Our pill box', kind: 'talk', text: 'We built a smart pill box that beeps, lights up and notifies the family.' },
+      { n: 3, title: 'Demo', kind: 'demo', text: 'Demo time.' },
+      { n: 4, title: 'Join us', kind: 'talk', text: 'We are looking for pharmacy chains as partners.' },
+    ],
+    text:
+      '[Slide 1 — The problem]\nOlder people miss their medicine every day and end up in hospital.\n\n[Slide 2 — Our pill box]\nWe built a smart pill box that beeps, lights up and notifies the family.\n\n[Slide 3 — Demo]\nDemo time.\n\n[Slide 4 — Join us]\nWe are looking for pharmacy chains as partners.',
   }),
 
   progress: (): Progress => {

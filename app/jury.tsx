@@ -20,7 +20,7 @@ type Phase = 'loading' | 'question' | 'answering' | 'sending' | 'comment' | 'fin
 
 export default function Jury() {
   const { wide } = useLayout();
-  const { user, round, addJuryAnswer, setJuryQuestions, setResult } = useGame();
+  const { user, round, difficulty, addJuryAnswer, setJuryQuestions, setResult } = useGame();
   const recorder = useRecorder();
   const [questions, setQuestions] = useState<JuryQuestion[]>([]);
   const [index, setIndex] = useState(0);
@@ -41,7 +41,7 @@ export default function Jury() {
     if (!round) return;
     setError('');
     api
-      .juryQuestions(round.round_id)
+      .juryQuestions(round.round_id, difficulty)
       .then((q) => {
         setQuestions(q);
         setJuryQuestions(q);
@@ -93,7 +93,7 @@ export default function Jury() {
     setError('');
     try {
       answerUri.current = answerUri.current ?? (await recorder.stop());
-      const answer = await api.juryAnswer(round.round_id, question.id, answerUri.current);
+      const answer = await api.juryAnswer(round.round_id, question.id, answerUri.current, difficulty);
       addJuryAnswer(answer);
       setScores((s) => ({ ...s, [question.juror]: answer.score }));
       setComment({ score: answer.score, text: answer.comment });

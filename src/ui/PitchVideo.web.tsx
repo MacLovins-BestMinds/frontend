@@ -10,7 +10,7 @@ import type { PitchVideoProps } from './PitchVideo';
  * Видеозапись выступления, браузер. Видео играет со своим звуком и само ведёт ползунок и маркеры —
  * второго плеера нет, поэтому подгонять звук к картинке не нужно и запись не дёргается.
  */
-export const PitchVideo = forwardRef<PitchPlayerHandle, PitchVideoProps>(function PitchVideo({ uri, offset, fallbackDuration, marks, notes }, ref) {
+export const PitchVideo = forwardRef<PitchPlayerHandle, PitchVideoProps>(function PitchVideo({ uri, offset, fallbackDuration, marks, notes, onPlay }, ref) {
   const video = useRef<HTMLVideoElement | null>(null);
   const [state, setState] = useState({ time: 0, playing: false, length: 0 });
 
@@ -39,13 +39,18 @@ export const PitchVideo = forwardRef<PitchPlayerHandle, PitchVideoProps>(functio
     const events = ['timeupdate', 'play', 'pause', 'ended', 'seeked'];
     v.addEventListener('loadedmetadata', loaded);
     events.forEach((e) => v.addEventListener(e, report));
+    const started = () => onPlay?.();
+    v.addEventListener('play', started);
     v.src = uri;
     return () => {
       v.pause();
       v.removeEventListener('loadedmetadata', loaded);
       v.removeEventListener('durationchange', settle);
+      v.removeEventListener('play', started);
       events.forEach((e) => v.removeEventListener(e, report));
     };
+    // onPlay читается в момент события
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uri]);
 
   // ползунок и маркеры живут во времени раунда; видео могло начаться позже (например, после смены камеры)
@@ -70,6 +75,7 @@ export const PitchVideo = forwardRef<PitchPlayerHandle, PitchVideoProps>(functio
       seek(Math.max(0, seconds - 1));
       video.current?.play().catch((e) => console.warn('The video did not start', e));
     },
+    pause: () => video.current?.pause(),
   }));
 
   const note = notes?.find((n) => position >= n.from && position <= n.to)?.text;

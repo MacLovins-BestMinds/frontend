@@ -7,7 +7,7 @@ import { c, font, outline } from '@/design/theme';
 
 import { PlayIcon } from './decor';
 
-export type PitchPlayerHandle = { playFrom: (seconds: number) => void };
+export type PitchPlayerHandle = { playFrom: (seconds: number) => void; pause: () => void };
 export type PlayerMark = { t: number; color: string };
 
 const THUMB = 22;
@@ -52,6 +52,8 @@ export function PlayerBar({ playing, position, duration, marks, onToggle, onSeek
       <Pressable accessibilityRole="button" accessibilityLabel={playing ? 'Pause' : 'Play the recording'} onPress={onToggle} style={styles.play}>
         {playing ? <View style={styles.pause} /> : <PlayIcon />}
       </Pressable>
+      {/* дорожка занимает всю оставшуюся ширину, время стоит под ней — так на узком экране её видно целиком */}
+      <View style={styles.trackColumn}>
       <View
         ref={track}
         style={styles.hit}
@@ -85,14 +87,21 @@ export function PlayerBar({ playing, position, duration, marks, onToggle, onSeek
       <Text style={styles.time}>
         {clock(shown)} / {clock(duration)}
       </Text>
+      </View>
     </View>
   );
 }
 
-type Props = { uri: string; fallbackDuration: number; marks: PlayerMark[] };
+type Props = {
+  uri: string;
+  fallbackDuration: number;
+  marks: PlayerMark[];
+  /** Где сейчас запись и играет ли она — по этому в тексте подсвечивается текущее слово. */
+  onTime?: (seconds: number, playing: boolean) => void;
+};
 
 /** Плеер звукозаписи питча — когда видео нет (в приложении или без камеры). */
-export const PitchPlayer = forwardRef<PitchPlayerHandle, Props>(function PitchPlayer({ uri, fallbackDuration, marks }, ref) {
+export const PitchPlayer = forwardRef<PitchPlayerHandle, Props>(function PitchPlayer({ uri, fallbackDuration, marks, onTime }, ref) {
   const player = useAudioPlayer(uri, { updateInterval: 100 });
   const status = useAudioPlayerStatus(player);
   const real = useRealDuration(uri);
@@ -111,7 +120,14 @@ export const PitchPlayer = forwardRef<PitchPlayerHandle, Props>(function PitchPl
     playFrom: (seconds) => {
       seek(Math.max(0, seconds - 1)).then(() => player.play());
     },
+    pause: () => player.pause(),
   }));
+
+  useEffect(() => {
+    onTime?.(position, status.playing);
+    // сообщаем только о смене места и состояния
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [position, status.playing]);
 
   // доиграло до конца — возвращаемся в начало, чтобы «играть» снова работало
   useEffect(() => {
@@ -129,17 +145,18 @@ export const PitchPlayer = forwardRef<PitchPlayerHandle, Props>(function PitchPl
 });
 
 const styles = StyleSheet.create({
-  player: { flexDirection: 'row', alignItems: 'center', gap: 14, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 6, ...outline },
+  player: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 16, paddingHorizontal: 12, paddingVertical: 8, ...outline },
   play: { width: 44, height: 44, borderRadius: 22, backgroundColor: c.orange, alignItems: 'center', justifyContent: 'center', ...outline },
   pause: { width: 14, height: 16, borderLeftWidth: 5, borderRightWidth: 5, borderColor: c.ink },
   // зона нажатия выше самой дорожки, чтобы в неё легко попасть пальцем
-  hit: { flex: 1, height: 44, justifyContent: 'center', marginHorizontal: THUMB / 2, cursor: 'pointer' },
+  trackColumn: { flex: 1 },
+  hit: { height: 34, justifyContent: 'center', marginHorizontal: THUMB / 2, cursor: 'pointer' },
   rail: { height: 12, borderRadius: 6, borderWidth: 2, borderColor: c.ink, backgroundColor: c.paper, overflow: 'hidden' },
   fill: { height: '100%', backgroundColor: c.orange },
-  mark: { position: 'absolute', top: 12, width: 9, height: 20, marginLeft: -4.5, borderRadius: 4, borderWidth: 2, borderColor: c.ink },
+  mark: { position: 'absolute', top: 7, width: 9, height: 20, marginLeft: -4.5, borderRadius: 4, borderWidth: 2, borderColor: c.ink },
   thumb: {
     position: 'absolute',
-    top: (44 - THUMB) / 2,
+    top: (34 - THUMB) / 2,
     width: THUMB,
     height: THUMB,
     marginLeft: -THUMB / 2,
@@ -149,5 +166,5 @@ const styles = StyleSheet.create({
     borderColor: c.orange,
   },
   thumbActive: { transform: [{ scale: 1.25 }] },
-  time: { fontFamily: font.semi, fontSize: 15, color: c.ink, fontVariant: ['tabular-nums'], minWidth: 86, textAlign: 'right' },
+  time: { fontFamily: font.semi, fontSize: 13, lineHeight: 16, color: c.ink, fontVariant: ['tabular-nums'], textAlign: 'right', marginRight: THUMB / 2 },
 });
