@@ -1,5 +1,7 @@
 // Типы строго по контрактам из docs/tz (Часть 1) и схемам бэкенда.
 
+import type { Lang } from '@/i18n/define';
+
 export type Mode = 'training' | 'daily' | 'own' | 'warmup';
 
 export type Rank = { title: string; trend: 'up' | 'down' | 'flat' | string };
@@ -30,6 +32,8 @@ export type Round = {
   prep_sec: number;
   pitch_min_sec: number;
   pitch_max_sec: number;
+  /** Язык раунда: на нём сервер пишет разбор и вопросы жюри. */
+  lang?: Lang;
 };
 
 export type TimelineEvent = {
@@ -73,6 +77,8 @@ export type Delivery = {
   tips: string[];
   /** Оценка английского произношения; null — не настроено или речь не на английском. */
   pronunciation?: Pronunciation | null;
+  /** На каком языке игрок на самом деле говорил (распознал сервер). */
+  speech_lang?: Lang;
 };
 
 export type Pronunciation = {
@@ -187,6 +193,30 @@ export type RoundReview = {
   jury_answers: (JuryAnswer & { question_id: string })[];
   /** Звук раунда на сервере (/static/recordings/...); null — записи нет (старые раунды). Видео не хранится. */
   audio_url?: string | null;
+  /** Ход мысли и «питч без запинок», если уже готовы; null — спросить у сервера по id раунда. */
+  flow?: Flow | null;
+  better_version?: BetterVersion | null;
+};
+
+/** Момент хода мысли: где питч зацепил зал или потерял нить (секунды записи) и что про это сказал ИИ. */
+export type FlowMoment = {
+  t: number;
+  end: number;
+  kind: 'hook' | 'strong' | 'weak' | 'off_topic' | 'rambling' | 'strong_close' | 'weak_close';
+  tone: 'good' | 'bad';
+  quote: string;
+  comment: string;
+};
+
+/** Ход мысли питча: сервер разбирает его сам после выступления, клиент опрашивает, пока status — pending. */
+export type Flow = { status: 'pending' | 'ready' | 'failed'; summary: string | null; moments: FlowMoment[] };
+
+/** Тот же питч без паразитов и запинок, озвученный голосом игрока; audio_url — путь /static/... */
+export type BetterVersion = {
+  status: 'pending' | 'ready' | 'failed' | 'unavailable';
+  audio_url: string | null;
+  text: string | null;
+  reason: string | null;
 };
 
 /** Темп, которым игрок хочет говорить: от него зависит, что зал считает «слишком медленно». */

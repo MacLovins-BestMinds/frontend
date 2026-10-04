@@ -1,10 +1,12 @@
 import { Platform } from 'react-native';
 
 import { env } from '@/config/env';
+import { getLang, translate } from '@/i18n';
 
 import { mocks } from './mocks';
 import type {
   AuthSession,
+  BetterVersion,
   Daily,
   Difficulty,
   FitSlides,
@@ -14,6 +16,7 @@ import type {
   Signup,
   Delivery,
   Finish,
+  Flow,
   GazePoint,
   JuryAnswer,
   JuryQuestion,
@@ -58,17 +61,28 @@ function sendForm(url: string, init: RequestInit & { headers: Record<string, str
     xhr.open(init.method ?? 'POST', url);
     Object.entries(init.headers).forEach(([k, v]) => xhr.setRequestHeader(k, v));
     xhr.onload = () => resolve(new Response(xhr.responseText, { status: xhr.status }));
-    xhr.onerror = () => reject(new Error('Network request failed'));
-    xhr.ontimeout = () => reject(new Error('Network request timed out'));
+    xhr.onerror = () => reject(new Error(translate('common', 'errNetwork')));
+    xhr.ontimeout = () => reject(new Error(translate('common', 'errTimeout')));
     xhr.send(init.body as FormData);
   });
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  if (!env.apiUrl) throw new Error('EXPO_PUBLIC_API_URL is not set');
-  const headers = { ...(init?.headers as Record<string, string> | undefined), ...(token ? { Authorization: `Bearer ${token}` } : {}) };
+  if (!env.apiUrl) throw new Error(translate('common', 'errNoApi'));
+  // язык интерфейса: на нём сервер присылает темы, разбор и тексты ошибок
+  const headers = {
+    ...(init?.headers as Record<string, string> | undefined),
+    'Accept-Language': getLang(),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
   const url = env.apiUrl.replace(/\/$/, '') + path;
-  const res = Platform.OS !== 'web' && init?.body instanceof FormData ? await sendForm(url, { ...init, headers }) : await fetch(url, { ...init, headers });
+  let res: Response;
+  try {
+    res = Platform.OS !== 'web' && init?.body instanceof FormData ? await sendForm(url, { ...init, headers }) : await fetch(url, { ...init, headers });
+  } catch (e) {
+    // сервер недоступен: вместо «Failed to fetch» браузера — понятная фраза на языке интерфейса
+    throw e instanceof TypeError ? new Error(translate('common', 'errNetwork')) : e;
+  }
   // вход по неверному паролю тоже отвечает 401 — выходим только там, где токен был отправлен
   if (res.status === 401 && token && !path.startsWith('/api/auth/')) onSignedOut();
   if (!res.ok) {
@@ -106,9 +120,9 @@ async function appendAudio(form: FormData, uri: string) {
   }
 }
 
-/** Абсолютный адрес для audio_url вопроса жюри; пустая строка, если озвучки нет. */
+/** Абсолютный адрес для audio_url вопроса жюри; пустая строка, если озвучки нет. data: и blob: — уже готовый адрес. */
 export function mediaUrl(path: string): string {
-  if (!path || /^https?:/.test(path)) return path;
+  if (!path || /^(https?|data|blob):/.test(path)) return path;
   return env.apiUrl.replace(/\/$/, '') + path;
 }
 
@@ -156,6 +170,13 @@ export const api = {
   roundReview: (roundId: string) =>
     env.useMocks ? mocked(mocks.roundReview(roundId)) : request<RoundReview>(`/api/game/rounds/${roundId}/review`),
 
+  /** Ход мысли питча: сервер начинает разбор сам после выступления, пока status — pending, спрашиваем снова. */
+  flow: (roundId: string) => (env.useMocks ? mocked(mocks.flow(roundId)) : request<Flow>(`/api/ai/rounds/${roundId}/flow`)),
+
+  /** Питч без запинок голосом игрока: готовится 20–90 с, опрашиваем так же. */
+  betterVersion: (roundId: string) =>
+    env.useMocks ? mocked(mocks.betterVersion(roundId)) : request<BetterVersion>(`/api/ai/rounds/${roundId}/better-version`),
+
   /** Колесо: случайная тема выбранного уровня. */
   spin: (difficulty: Difficulty = 'easy') => (env.useMocks ? mocked(mocks.spin()) : request<Spin>(`/api/game/spin?difficulty=${difficulty}`)),
 
@@ -168,6 +189,7 @@ export const api = {
           user_id: userId,
           mode,
           difficulty,
+          lang: getLang(),
           case_id: mode === 'own' ? undefined : caseId,
           own: mode === 'own' ? own : undefined,
         }),
@@ -179,7 +201,7 @@ export const api = {
 
   delivery: async (roundId: string, audioUri: string | null, gaze: GazePoint[] = [], notes = '', pace: Pace = 'normal', limits: PitchLimits | null = null) => {
     if (env.useMocks) return mocked(mocks.delivery());
-    if (!audioUri) throw new Error('There is no recording of the pitch');
+    if (!audioUri) throw new Error(translate('common', 'errNoPitch'));
     const form = new FormData();
     await appendAudio(form, audioUri);
     form.append('gaze', JSON.stringify(gaze));
@@ -202,7 +224,7 @@ export const api = {
 
   juryAnswer: async (roundId: string, questionId: string, audioUri: string | null, difficulty: Difficulty = 'easy') => {
     if (env.useMocks) return mocked(mocks.juryAnswer());
-    if (!audioUri) throw new Error('There is no recording of the answer');
+    if (!audioUri) throw new Error(translate('common', 'errNoAnswer'));
     const form = new FormData();
     form.append('question_id', questionId);
     form.append('difficulty', difficulty);
@@ -211,6 +233,14 @@ export const api = {
       method: 'POST',
       body: form,
     });
+  },
+
+  /** Пропустить вопрос жюри: засчитывается 0 баллов. */
+  jurySkip: (roundId: string, questionId: string) => {
+    if (env.useMocks) return mocked<JuryAnswer>({ score: 0, comment: 'Skipped — no points for this question.' });
+    const form = new FormData();
+    form.append('question_id', questionId);
+    return request<JuryAnswer>(`/api/ai/rounds/${roundId}/jury/skip`, { method: 'POST', body: form });
   },
 
   finish: (roundId: string) =>

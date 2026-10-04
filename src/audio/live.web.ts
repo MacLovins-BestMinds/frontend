@@ -1,4 +1,3 @@
-
 import type { LiveHandlers } from './live';
 import { openLiveSocket } from './liveSocket';
 import { acquireMic, releaseMic } from './mic.web';

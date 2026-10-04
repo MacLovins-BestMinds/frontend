@@ -77,7 +77,7 @@ export function CameraFrame({ facing = 'user', onFacing, onReady, ...props }: Pr
           display: state === 'on' ? 'block' : 'none',
         },
       })}
-      {state !== 'on' && <CameraPlaceholder text={state === 'off' ? 'no camera' : 'camera'} />}
+      {state !== 'on' && <CameraPlaceholder off={state === 'off'} />}
     </Frame>
   );
 }

@@ -1,5 +1,5 @@
 import { Redirect, router } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import Svg, { Path } from 'react-native-svg';
@@ -9,6 +9,7 @@ import type { Difficulty, Spin } from '@/api/types';
 import { findAudience } from '@/content/audiences';
 import { c } from '@/design/theme';
 import { useLayout } from '@/hooks/useLayout';
+import { useLang, useT } from '@/i18n';
 import { useGame } from '@/store/game';
 import { AppHeader } from '@/ui/AppHeader';
 import { goBack } from '@/ui/nav';
@@ -18,12 +19,15 @@ import { Button, Card, Container, ErrorText, H1, H3, Label, Muted, Page } from '
 
 const SPIN_MS = 1400;
 // сколько минут на подготовку даёт каждый уровень
-const PREP_MIN: Record<Difficulty, string> = { easy: '5 min', medium: '4 min', hard: '3 min' };
+const PREP_MIN: Record<Difficulty, number> = { easy: 5, medium: 4, hard: 3 };
 type Phase = 'idle' | 'category' | 'case' | 'done';
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export default function WheelScreen() {
+  const t = useT('wheel');
+  const tc = useT('common');
+  const lang = useLang();
   const { wide } = useLayout();
   const user = useGame((s) => s.user);
   const startTopic = useGame((s) => s.startTopic);
@@ -53,7 +57,7 @@ export default function WheelScreen() {
       await wait(SPIN_MS);
       setPhase('done');
     } catch (e) {
-      setError(`The wheel did not spin: ${(e as Error).message}`);
+      setError(t('errSpin', { message: (e as Error).message }));
       setPhase('idle');
     }
   };
@@ -64,6 +68,15 @@ export default function WheelScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // сменили язык — крутим заново: тему сервер присылает на языке интерфейса
+  const shownLang = useRef(lang);
+  useEffect(() => {
+    if (shownLang.current === lang) return;
+    shownLang.current = lang;
+    if (phase === 'idle' || phase === 'done') run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lang]);
+
   if (!user) return <Redirect href="/" />;
 
   const spinning = phase === 'category' || phase === 'case';
@@ -72,7 +85,25 @@ export default function WheelScreen() {
   const size = wide ? 380 : 250;
 
   return (
-    <Page sticky>
+    <Page
+      sticky
+      footer={
+        <View style={styles.actions}>
+          {ready ? (
+            <TicketButton
+              title={t('take')}
+              stubTop={tc('minutes', { n: PREP_MIN[difficulty] })}
+              stubBottom="→"
+              onPress={() => {
+                startTopic('training', spin.case);
+                router.push('/prep');
+              }}
+              stretch={!wide}
+            />
+          ) : null}
+          <Button title={t('again')} variant="secondary" disabled={spinning} onPress={() => run()} style={!wide ? styles.full : undefined} />
+        </View>
+      }>
       <AppHeader glass back={() => goBack()} />
       <Container style={[styles.main, wide && styles.mainWide]}>
         <View style={[styles.wheelBox, wide && styles.wheelBoxWide]}>
@@ -84,7 +115,7 @@ export default function WheelScreen() {
           </Animated.View>
         </View>
         <View style={styles.side}>
-          <H1 style={!wide && styles.titleNarrow}>Topic wheel</H1>
+          <H1 style={!wide && styles.titleNarrow}>{t('title')}</H1>
           {/* тема зависит от уровня: сменил уровень — колесо крутится заново */}
           <LevelPicker
             value={difficulty}
@@ -97,34 +128,21 @@ export default function WheelScreen() {
             }}
           />
           <Card flat>
-            <Label>Category</Label>
-            <H3>{spin ? spin.category.title : 'Spinning…'}</H3>
+            <Label>{t('category')}</Label>
+            <H3>{spin ? spin.category.title : t('spinning')}</H3>
           </Card>
           <Card>
-            <Label>What you pitch</Label>
-            <H3>{ready ? spin.case.title : spinning ? 'Spinning…' : '—'}</H3>
+            <Label>{t('whatYouPitch')}</Label>
+            <H3>{ready ? spin.case.title : spinning ? t('spinning') : '—'}</H3>
             {ready && (
               <Muted>
-                Audience: {audience ? `${audience.name.toLowerCase()} — they care about ${audience.focus.toLowerCase()}` : spin.case.audience}
+                {audience
+                  ? t('audienceCares', { name: audience.name.toLowerCase(), focus: audience.focus.toLowerCase() })
+                  : t('audience', { name: spin.case.audience })}
               </Muted>
             )}
           </Card>
           <ErrorText>{error}</ErrorText>
-          <View style={styles.actions}>
-            {ready ? (
-              <TicketButton
-                title="Take this topic"
-                stubTop={PREP_MIN[difficulty]}
-                stubBottom="→"
-                onPress={() => {
-                  startTopic('training', spin.case);
-                  router.push('/prep');
-                }}
-                stretch={!wide}
-              />
-            ) : null}
-            <Button title="Spin again" variant="secondary" disabled={spinning} onPress={() => run()} style={!wide ? styles.full : undefined} />
-          </View>
         </View>
       </Container>
     </Page>
@@ -139,6 +157,6 @@ const styles = StyleSheet.create({
   pointer: { marginBottom: -14, zIndex: 1 },
   side: { gap: 18, flex: 1 },
   titleNarrow: { fontSize: 28, lineHeight: 34 },
-  actions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 16, marginTop: 4 },
+  actions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 12 },
   full: { width: '100%' },
 });

@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Platform,
@@ -31,26 +31,37 @@ const enter = Platform.OS === 'web' ? FadeInDown.duration(320).withInitialValues
  * Фон и прокрутка идут до самых краёв экрана: текст уезжает под строку статуса и полоску «домой»,
  * а отступы безопасной зоны стоят внутри прокрутки — сверху и снизу нет голых полос.
  * sticky — первый ребёнок (стеклянная шапка) прилипает к верху и сама уходит под строку статуса.
+ * footer — главные кнопки экрана: приклеены к низу и всегда под пальцем, контент прокручивается под ними.
  */
-export function Page({ children, scroll = true, sticky = false }: Children & { scroll?: boolean; sticky?: boolean }) {
+export function Page({ children, scroll = true, sticky = false, footer }: Children & { scroll?: boolean; sticky?: boolean; footer?: ReactNode }) {
   const insets = useSafeAreaInsets();
   const sides = { paddingLeft: insets.left, paddingRight: insets.right };
+  // контенту нужен отступ снизу на высоту панели, иначе последние карточки окажутся под ней
+  const [footerHeight, setFooterHeight] = useState(0);
+  const bottom = footer ? footerHeight + 16 : insets.bottom + 16;
   return (
     <View style={styles.page}>
       <Backdrop />
       <Animated.View entering={enter} style={[styles.body, sides]}>
         {scroll ? (
           <ScrollView
-            contentContainerStyle={[styles.pageContent, { paddingTop: sticky ? 0 : insets.top, paddingBottom: insets.bottom + 16 }]}
-            scrollIndicatorInsets={{ top: sticky ? 0 : insets.top, bottom: insets.bottom }}
+            contentContainerStyle={[styles.pageContent, { paddingTop: sticky ? 0 : insets.top, paddingBottom: bottom }]}
+            scrollIndicatorInsets={{ top: sticky ? 0 : insets.top, bottom: footer ? footerHeight : insets.bottom }}
             keyboardShouldPersistTaps="handled"
             stickyHeaderIndices={sticky ? [0] : undefined}>
             {children}
           </ScrollView>
         ) : (
-          <View style={[styles.body, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>{children}</View>
+          <View style={[styles.body, { paddingTop: insets.top, paddingBottom: footer ? footerHeight : insets.bottom }]}>{children}</View>
         )}
       </Animated.View>
+      {footer ? (
+        <View
+          style={[styles.footer, { paddingBottom: insets.bottom + 12, paddingLeft: insets.left, paddingRight: insets.right }]}
+          onLayout={(e) => setFooterHeight(e.nativeEvent.layout.height)}>
+          <Container>{footer}</Container>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -188,6 +199,16 @@ const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: c.cream },
   body: { flex: 1 },
   pageContent: { flexGrow: 1 },
+  footer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingTop: 12,
+    backgroundColor: 'rgba(249, 247, 225, 0.94)',
+    borderTopWidth: 2,
+    borderTopColor: 'rgba(22, 20, 24, 0.12)',
+  },
   container: { width: '100%', alignSelf: 'center' },
   error: { fontFamily: font.semi, fontSize: 15, lineHeight: 21, color: c.bad },
   button: {

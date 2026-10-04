@@ -1,19 +1,32 @@
 import { Redirect, router } from 'expo-router';
+import { useRef } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { c, font } from '@/design/theme';
+import { c, font, formatDate } from '@/design/theme';
+import { useReviewInsights } from '@/hooks/useInsights';
 import { useLayout } from '@/hooks/useLayout';
+import { useT } from '@/i18n';
+import { rankLabel } from '@/i18n/ranks';
 import { useGame } from '@/store/game';
 import { AppHeader } from '@/ui/AppHeader';
+import { BetterVersion } from '@/ui/BetterVersion';
 import { GlassButton } from '@/ui/Glass';
 import { goMenu } from '@/ui/nav';
 import { DashedLine, Paddle, Stamp } from '@/ui/decor';
+import type { PitchPlayerHandle } from '@/ui/PitchPlayer';
 import { Recording } from '@/ui/Recording';
 import { Button, Card, Container, H1, H3, Label, Muted, P, Page, Small } from '@/ui/primitives';
 
 export default function Result() {
+  const t = useT('result');
+  const tc = useT('common');
   const { wide } = useLayout();
-  const { result, delivery, juryAnswers, juryQuestions, pitchAudioUri, pitchVideoUri, pitchVideoOffset, mode, reviewOf } = useGame();
+  const { result, delivery, juryAnswers, juryQuestions, pitchAudioUri, pitchVideoUri, pitchVideoOffset, mode, reviewOf, round, flow, betterVersion } = useGame();
+  // ход мысли и питч без запинок готовятся на сервере в фоне: у раунда из истории могут прийти готовыми
+  const insights = useReviewInsights(delivery ? (reviewOf?.id ?? round?.round_id ?? null) : null, flow, betterVersion);
+  // играет что-то одно: запись выступления или озвучка без запинок
+  const recording = useRef<PitchPlayerHandle>(null);
+  const polished = useRef<PitchPlayerHandle>(null);
 
   if (!result) return <Redirect href="/" />;
 
@@ -21,8 +34,8 @@ export default function Result() {
   const paddle = wide ? 150 : 88;
   const notes = delivery
     ? {
-        content: delivery.scores.content.criteria.length ? `best line: “${[...delivery.scores.content.criteria].sort((a, b) => b.score - a.score)[0].quote}”` : undefined,
-        delivery: `${delivery.metrics.wpm} words per minute, fillers: ${delivery.metrics.fillers}, long pauses: ${delivery.metrics.long_pauses}`,
+        content: delivery.scores.content.criteria.length ? t('bestLine', { quote: [...delivery.scores.content.criteria].sort((a, b) => b.score - a.score)[0].quote }) : undefined,
+        delivery: t('deliveryNote', { wpm: delivery.metrics.wpm, fillers: delivery.metrics.fillers, pauses: delivery.metrics.long_pauses }),
       }
     : { content: undefined, delivery: undefined };
   const pron = delivery?.pronunciation;
@@ -31,38 +44,34 @@ export default function Result() {
   return (
     <Page sticky>
       <AppHeader glass>
-        <GlassButton icon="home" title="Menu" onPress={goMenu} />
+        <GlassButton icon="home" title={tc('menu')} onPress={goMenu} />
       </AppHeader>
       <Container style={styles.main}>
         <View style={styles.head}>
-          <H1 style={!wide && styles.titleNarrow}>{wide ? 'Pitch review' : 'Review'}</H1>
-          {reviewOf && (
-            <Muted>
-              From your history: {reviewOf.title}, {new Date(reviewOf.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}.
-            </Muted>
-          )}
+          <H1 style={!wide && styles.titleNarrow}>{wide ? t('title') : t('titleShort')}</H1>
+          {reviewOf && <Muted>{t('fromHistory', { title: reviewOf.title, date: formatDate(reviewOf.created_at, { day: 'numeric', month: 'long' }) })}</Muted>}
         </View>
 
         <View style={[styles.top, wide && styles.topWide]}>
           <View style={[styles.score, wide && styles.scoreWide]}>
             <View style={wide ? undefined : styles.grow}>
-              <Label style={{ color: c.orange }}>Round score</Label>
+              <Label style={{ color: c.orange }}>{t('roundScore')}</Label>
               <View style={styles.scoreRow}>
                 <Text style={[styles.total, !wide && { fontSize: 72, lineHeight: 78 }]}>{Math.round(result.total)}</Text>
-                <Text style={styles.outOf}>out of 100</Text>
+                <Text style={styles.outOf}>{t('outOf')}</Text>
               </View>
             </View>
             <View style={[styles.stampRow, wide && styles.stampRowWide]}>
               {wide ? <DashedLine color="#5E584C" style={styles.stampRule} /> : null}
-              <Stamp title={result.rank.title} caption="rank" trend={result.rank.trend} size={wide ? 132 : 104} color={c.orange} tilt={-9} />
-              {wide && <Small style={styles.stampNote}>The jury has stamped it. Your rank is based on the average score of your last five rounds.</Small>}
+              <Stamp title={rankLabel(tc, result.rank.title)} caption={t('stampRank')} trend={result.rank.trend} size={wide ? 132 : 104} color={c.orange} tilt={-9} />
+              {wide && <Small style={styles.stampNote}>{t('stampNote')}</Small>}
             </View>
           </View>
           <View style={[styles.paddles, wide && styles.paddlesWide]}>
-            <Paddle value={result.content} label="Content" weight={mode === 'warmup' ? '50%' : '40%'} note={wide ? notes.content : undefined} size={paddle} tilt={-5} />
-            <Paddle value={result.delivery} label="Delivery" weight={mode === 'warmup' ? '50%' : '40%'} note={wide ? notes.delivery : undefined} size={paddle} tilt={4} accent />
+            <Paddle value={result.content} label={t('content')} weight={mode === 'warmup' ? '50%' : '40%'} note={wide ? notes.content : undefined} size={paddle} tilt={-5} />
+            <Paddle value={result.delivery} label={t('delivery')} weight={mode === 'warmup' ? '50%' : '40%'} note={wide ? notes.delivery : undefined} size={paddle} tilt={4} accent />
             {mode !== 'warmup' && (
-              <Paddle value={result.jury} label={wide ? 'Jury answers' : 'Jury'} weight="20%" note={wide && juryAnswers[0] ? juryAnswers[0].comment : undefined} size={paddle} tilt={-3} />
+              <Paddle value={result.jury} label={wide ? t('juryAnswers') : t('juryShort')} weight="20%" note={wide && juryAnswers[0] ? juryAnswers[0].comment : undefined} size={paddle} tilt={-3} />
             )}
           </View>
         </View>
@@ -71,28 +80,32 @@ export default function Result() {
           <View style={[styles.columns, wide && styles.columnsWide]}>
             <View style={[styles.left, wide && styles.leftWide]}>
               <Recording
+                ref={recording}
+                flow={insights.flow}
+                onPlay={() => polished.current?.pause()}
                 delivery={delivery}
                 audioUri={pitchAudioUri}
                 videoUri={pitchVideoUri}
                 videoOffset={pitchVideoOffset}
                 duration={duration}
                 wide={wide}
-                noRecording={reviewOf ? 'This round was played before recordings were saved, so it has only the transcript and the marks.' : 'The recording of this pitch is not available — markers only show the time.'}
+                noRecording={reviewOf ? t('noRecordingHistory') : t('noRecording')}
               />
             </View>
 
             <View style={[styles.side, wide && styles.sideWide]}>
               <Card tone="accent">
-                <H3>Three tips</H3>
+                <H3>{t('threeTips')}</H3>
                 {delivery.tips.map((tip, i) => (
                   <P key={tip}>
                     {i + 1}. {tip}
                   </P>
                 ))}
               </Card>
+              <BetterVersion ref={polished} better={insights.better} onPlay={() => recording.current?.pause()} />
               {juryAnswers.length > 0 && (
                 <Card flat>
-                  <H3>Jury questions</H3>
+                  <H3>{t('juryQuestions')}</H3>
                   {juryAnswers.map((a, i) => (
                     <View key={i} style={styles.answer}>
                       <Text style={styles.answerScore}>{a.score}</Text>
@@ -106,12 +119,12 @@ export default function Result() {
               )}
               {pron && (
                 <Card flat>
-                  <H3>Pronunciation</H3>
+                  <H3>{t('pronunciation')}</H3>
                   <P>
-                    Overall {pron.overall_score}: sounds {pron.accuracy_score}, fluency {pron.fluency_score}
-                    {pron.prosody_score !== null ? `, intonation ${pron.prosody_score}` : ''}.
+                    {t('pronOverall', { overall: pron.overall_score, accuracy: pron.accuracy_score, fluency: pron.fluency_score })}
+                    {pron.prosody_score !== null ? t('pronProsody', { prosody: pron.prosody_score }) : ''}.
                   </P>
-                  {pron.words.length > 0 && <Muted>Words worth practising: {pron.words.slice(0, 6).map((w) => w.word).join(', ')}.</Muted>}
+                  {pron.words.length > 0 && <Muted>{t('pronWords', { words: pron.words.slice(0, 6).map((w) => w.word).join(', ') })}</Muted>}
                   {pron.tips.map((tip) => (
                     <Muted key={tip}>• {tip}</Muted>
                   ))}
@@ -123,11 +136,11 @@ export default function Result() {
 
         <View style={[styles.actions, !wide && styles.actionsNarrow]}>
           {reviewOf ? (
-            <Button title="Back to your progress" onPress={() => router.replace('/profile')} />
+            <Button title={t('backToProgress')} onPress={() => router.replace('/profile')} />
           ) : (
-            <Button title="Another round" onPress={() => router.replace('/wheel')} />
+            <Button title={t('another')} onPress={() => router.replace('/wheel')} />
           )}
-          <Button title={reviewOf ? 'Menu' : 'Your progress'} variant="secondary" onPress={() => (reviewOf ? goMenu() : router.replace('/profile'))} />
+          <Button title={reviewOf ? tc('menu') : t('yourProgress')} variant="secondary" onPress={() => (reviewOf ? goMenu() : router.replace('/profile'))} />
         </View>
       </Container>
     </Page>

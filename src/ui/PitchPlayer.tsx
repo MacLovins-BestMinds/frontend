@@ -4,12 +4,16 @@ import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useRealDuration } from '@/audio/duration';
 import { c, font, outline } from '@/design/theme';
+import { useT } from '@/i18n';
 
 import { PlayIcon } from './decor';
 
 export type PitchPlayerHandle = { playFrom: (seconds: number) => void; pause: () => void };
-/** Отметка на дорожке: где случилась ошибка, её цвет и что это (для подсказки над ползунком). */
-export type PlayerMark = { t: number; color: string; label?: string };
+/**
+ * Отметка на дорожке: где случилась ошибка, её цвет и что это (для подсказки над ползунком).
+ * dot — круглая отметка: так моменты хода мысли отличаются от отметок речи.
+ */
+export type PlayerMark = { t: number; color: string; label?: string; dot?: boolean };
 
 const THUMB = 22;
 const HIT = 34;
@@ -41,6 +45,7 @@ type BarProps = {
  * ошибка и переходы к прошлой и следующей. Что именно играет (звук или видео), панель не знает.
  */
 export function PlayerBar({ playing, position, duration, marks, onToggle, onSeek }: BarProps) {
+  const t = useT('review');
   // пока палец ведёт ползунок, показываем его место, а не место плеера; hover — куда указывает мышь
   const [scrub, setScrub] = useState<number | null>(null);
   const [hover, setHover] = useState<number | null>(null);
@@ -100,7 +105,7 @@ export function PlayerBar({ playing, position, duration, marks, onToggle, onSeek
 
   return (
     <View style={styles.player}>
-      <Pressable accessibilityRole="button" accessibilityLabel={playing ? 'Pause' : 'Play the recording'} onPress={onToggle} style={styles.play}>
+      <Pressable accessibilityRole="button" accessibilityLabel={playing ? t('pause') : t('play')} onPress={onToggle} style={styles.play}>
         {playing ? <View style={styles.pause} /> : <PlayIcon />}
       </Pressable>
       {/* дорожка занимает всю оставшуюся ширину, время стоит под ней — так на узком экране её видно целиком */}
@@ -113,11 +118,11 @@ export function PlayerBar({ playing, position, duration, marks, onToggle, onSeek
             measure();
           }}
           accessibilityRole="adjustable"
-          accessibilityLabel="Position in the recording"
+          accessibilityLabel={t('position')}
           accessibilityValue={{ min: 0, max: Math.round(duration), now: Math.round(shown) }}
           accessibilityActions={[
-            { name: 'increment', label: 'Next mistake' },
-            { name: 'decrement', label: 'Previous mistake' },
+            { name: 'increment', label: t('nextMistake') },
+            { name: 'decrement', label: t('prevMistake') },
           ]}
           onAccessibilityAction={(e) => jump(e.nativeEvent.actionName === 'increment' ? next : prev)}
           onStartShouldSetResponder={() => true}
@@ -149,7 +154,11 @@ export function PlayerBar({ playing, position, duration, marks, onToggle, onSeek
                 <View
                   key={i}
                   pointerEvents="none"
-                  style={[styles.mark, on && styles.markOn, { left: `${Math.min(100, (m.t / duration) * 100)}%`, backgroundColor: m.color }]}
+                  style={[
+                    m.dot ? styles.dot : styles.mark,
+                    on && (m.dot ? styles.dotOn : styles.markOn),
+                    { left: `${Math.min(100, (m.t / duration) * 100)}%`, backgroundColor: m.color },
+                  ]}
                 />
               );
             })}
@@ -174,10 +183,10 @@ export function PlayerBar({ playing, position, duration, marks, onToggle, onSeek
         <View style={styles.under}>
           {sorted.length > 0 && (
             <>
-              <Pressable accessibilityRole="button" accessibilityLabel="Previous mistake" disabled={!prev} onPress={() => jump(prev)} style={[styles.skip, !prev && styles.skipOff]}>
+              <Pressable accessibilityRole="button" accessibilityLabel={t('prevMistake')} disabled={!prev} onPress={() => jump(prev)} style={[styles.skip, !prev && styles.skipOff]}>
                 <Text style={styles.skipText}>‹</Text>
               </Pressable>
-              <Pressable accessibilityRole="button" accessibilityLabel="Next mistake" disabled={!next} onPress={() => jump(next)} style={[styles.skip, !next && styles.skipOff]}>
+              <Pressable accessibilityRole="button" accessibilityLabel={t('nextMistake')} disabled={!next} onPress={() => jump(next)} style={[styles.skip, !next && styles.skipOff]}>
                 <Text style={styles.skipText}>›</Text>
               </Pressable>
             </>
@@ -192,7 +201,7 @@ export function PlayerBar({ playing, position, duration, marks, onToggle, onSeek
               </>
             ) : sorted.length > 0 ? (
               <Text style={styles.nowHint} numberOfLines={1}>
-                {sorted.length} {sorted.length === 1 ? 'marker' : 'markers'} · ‹ › to jump
+                {t('markers', { n: sorted.length })}
               </Text>
             ) : null}
           </View>
@@ -269,6 +278,8 @@ const styles = StyleSheet.create({
   mark: { position: 'absolute', top: 8, width: 7, height: 18, marginLeft: -3.5, borderRadius: 3, borderWidth: 1.5, borderColor: c.ink },
   // текущая или выбранная ошибка — крупнее, как глава под курсором на YouTube
   markOn: { top: 4, width: 11, height: 26, marginLeft: -5.5, borderRadius: 4, borderWidth: 2.5, zIndex: 1 },
+  dot: { position: 'absolute', top: 10, width: 14, height: 14, marginLeft: -7, borderRadius: 7, borderWidth: 2, borderColor: c.ink },
+  dotOn: { top: 6, width: 22, height: 22, marginLeft: -11, borderRadius: 11, borderWidth: 2.5, zIndex: 1 },
   hoverLine: { position: 'absolute', top: 4, width: 2, height: HIT - 8, marginLeft: -1, backgroundColor: c.graphite, opacity: 0.6 },
   thumb: {
     position: 'absolute',

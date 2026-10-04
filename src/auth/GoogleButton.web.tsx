@@ -1,6 +1,8 @@
 import { createElement, useEffect, useRef } from 'react';
 import { StyleSheet, View } from 'react-native';
 
+import { translate, useLang } from '@/i18n';
+
 import type { GoogleButtonProps } from './GoogleButton';
 
 const SCRIPT = 'https://accounts.google.com/gsi/client';
@@ -24,9 +26,9 @@ function loadGoogle(): Promise<GoogleId> {
     script.onload = () => {
       const id = ready();
       if (id) resolve(id);
-      else reject(new Error('Google sign-in did not load'));
+      else reject(new Error(translate('common', 'errGoogleLoad')));
     };
-    script.onerror = () => reject(new Error('Google sign-in did not load'));
+    script.onerror = () => reject(new Error(translate('common', 'errGoogleLoad')));
     document.head.appendChild(script);
   });
   loading.catch(() => (loading = null)); // не загрузилось — при следующем открытии попробуем снова
@@ -35,6 +37,7 @@ function loadGoogle(): Promise<GoogleId> {
 
 /** Кнопка «Continue with Google», браузер: её рисует сам Google, нам возвращается ID-токен. */
 export function GoogleButton({ clientId, onToken, onError }: GoogleButtonProps) {
+  const lang = useLang();
   const slot = useRef<HTMLDivElement | null>(null);
   const handlers = useRef({ onToken, onError });
   handlers.current = { onToken, onError };
@@ -46,15 +49,17 @@ export function GoogleButton({ clientId, onToken, onError }: GoogleButtonProps) 
         if (cancelled || !slot.current) return;
         google.initialize({
           client_id: clientId,
-          callback: (response) => (response.credential ? handlers.current.onToken(response.credential) : handlers.current.onError('Google did not return an account')),
+          callback: (response) => (response.credential ? handlers.current.onToken(response.credential) : handlers.current.onError(translate('common', 'errGoogleAccount'))),
         });
-        google.renderButton(slot.current, { type: 'standard', theme: 'outline', size: 'large', shape: 'pill', text: 'continue_with', logo_alignment: 'center', width: 320 });
+        // надпись на кнопке Google рисует сам — на языке интерфейса; при смене языка кнопка перерисовывается
+        slot.current.replaceChildren();
+        google.renderButton(slot.current, { type: 'standard', theme: 'outline', size: 'large', shape: 'pill', text: 'continue_with', logo_alignment: 'center', width: 320, locale: lang });
       })
       .catch((e: Error) => !cancelled && handlers.current.onError(e.message));
     return () => {
       cancelled = true;
     };
-  }, [clientId]);
+  }, [clientId, lang]);
 
   return <View style={styles.wrap}>{createElement('div', { ref: slot, style: { minHeight: 44 } })}</View>;
 }

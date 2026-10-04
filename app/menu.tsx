@@ -4,9 +4,11 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { api } from '@/api/client';
 import type { Case, LeaderboardEntry, Profile } from '@/api/types';
-import { AUDIENCES, findAudience } from '@/content/audiences';
+import { audiences, findAudience } from '@/content/audiences';
 import { c, font, formatDay, outline, shadow } from '@/design/theme';
 import { useLayout } from '@/hooks/useLayout';
+import { useT } from '@/i18n';
+import { rankLabel } from '@/i18n/ranks';
 import { useGame } from '@/store/game';
 import { AppHeader, NickChip } from '@/ui/AppHeader';
 import { DashedLine, Tape, TrendArrow, Wheel } from '@/ui/decor';
@@ -14,6 +16,8 @@ import { LevelPicker } from '@/ui/LevelPicker';
 import { Button, Card, Chip, Container, ErrorText, H1, H3, Label, Muted, P, Page, Small } from '@/ui/primitives';
 
 export default function Menu() {
+  const t = useT('menu');
+  const tc = useT('common');
   const { wide } = useLayout();
   const user = useGame((s) => s.user);
   const startTopic = useGame((s) => s.startTopic);
@@ -25,15 +29,17 @@ export default function Menu() {
   const [error, setError] = useState('');
   const [trainingWidth, setTrainingWidth] = useState(0);
 
+  // язык сменили — тему дня запрашиваем заново: её текст сервер присылает на языке интерфейса
   useEffect(() => {
     if (!user) return;
+    setError('');
     api
       .daily()
       .then((d) => setDaily({ date: d.date, topic: d.case }))
-      .catch((e: Error) => setError(`Could not load the topic of the day: ${e.message}`));
+      .catch((e: Error) => setError(t('errDaily', { message: e.message })));
     api.leaderboard().then(setLeaders).catch(() => setLeaders([]));
     api.profile(user.user_id).then(setProfile).catch(() => setProfile(null));
-  }, [user]);
+  }, [user, t]);
 
   if (!user) return <Redirect href="/" />;
 
@@ -48,11 +54,15 @@ export default function Menu() {
   const audience = daily ? findAudience(daily.topic.audience)?.name ?? daily.topic.audience : '';
 
   const rankCard = (
-    <Pressable accessibilityRole="link" accessibilityLabel="Your profile and progress" onPress={() => router.push('/profile')} style={[styles.rank, wide ? styles.rankWide : styles.rankNarrow]}>
+    <Pressable accessibilityRole="link" accessibilityLabel={t('profileLink')} onPress={() => router.push('/profile')} style={[styles.rank, wide ? styles.rankWide : styles.rankNarrow]}>
       <View style={styles.rankText}>
-        <Label style={styles.rankLabel}>Rank</Label>
-        <Text style={[styles.rankTitle, !wide && { fontSize: 16, lineHeight: 21 }]}>{rank.title}</Text>
-        {wide && <Small style={styles.rankNote}>{average === null ? 'no rounds yet' : `average over ${rounds.length} ${plural(rounds.length)}: ${average}`} · see progress</Small>}
+        <Label style={styles.rankLabel}>{t('rank')}</Label>
+        <Text style={[styles.rankTitle, !wide && { fontSize: 16, lineHeight: 21 }]}>{rankLabel(tc, rank.title)}</Text>
+        {wide && (
+          <Small style={styles.rankNote}>
+            {average === null ? t('noRounds') : t('average', { n: rounds.length, avg: average })} · {t('seeProgress')}
+          </Small>
+        )}
       </View>
       <TrendArrow trend={rank.trend} size={wide ? 44 : 22} />
     </Pressable>
@@ -68,12 +78,10 @@ export default function Menu() {
       <View style={[styles.wheel, { right: -wheel * 0.2, bottom: -wheel * (wide ? 0.4 : 0.37) }]} pointerEvents="none">
         <Wheel size={wheel} />
       </View>
-      <Label style={styles.ink}>Training</Label>
-      <Text style={[styles.trainingTitle, !wide && styles.trainingTitleNarrow, { marginRight: wheelRoom * 0.55 }]}>Spin the wheel, get a topic</Text>
-      <P style={[styles.trainingText, !wide && { fontSize: 15, lineHeight: 21 }, { marginRight: wheelRoom }]}>
-        {wide ? 'The wheel picks a topic for your level. A few minutes to prepare, then 1–3 minutes to pitch — or set your own length. Spin as many times as you like.' : 'A topic for your level, 1–3 minutes to pitch or your own length.'}
-      </P>
-      <Button title="Spin the wheel" variant="ink" onPress={() => router.push('/wheel')} style={styles.trainingButton} />
+      <Label style={styles.ink}>{tc('mode.training')}</Label>
+      <Text style={[styles.trainingTitle, !wide && styles.trainingTitleNarrow, { marginRight: wheelRoom * 0.55 }]}>{t('trainingTitle')}</Text>
+      <P style={[styles.trainingText, !wide && { fontSize: 15, lineHeight: 21 }, { marginRight: wheelRoom }]}>{wide ? t('trainingWide') : t('trainingNarrow')}</P>
+      <Button title={t('spin')} variant="ink" onPress={() => router.push('/wheel')} style={styles.trainingButton} />
     </Card>
   );
 
@@ -82,16 +90,16 @@ export default function Menu() {
       <Tape style={{ left: 36 }} tilt={-6} />
       <Tape style={{ right: 36 }} tilt={5} />
       <View style={styles.posterHead}>
-        <Label style={styles.grow}>Topic of the day</Label>
+        <Label style={styles.grow}>{tc('mode.daily')}</Label>
         {daily && <Chip title={formatDay(daily.date)} />}
       </View>
-      <H3 style={wide ? styles.posterTitle : undefined}>{daily ? daily.topic.title : 'Loading…'}</H3>
-      {daily && <Muted>Audience: {audience.toLowerCase()}</Muted>}
+      <H3 style={wide ? styles.posterTitle : undefined}>{daily ? daily.topic.title : tc('loading')}</H3>
+      {daily && <Muted>{t('audience', { audience: audience.toLowerCase() })}</Muted>}
       <ErrorText>{error}</ErrorText>
       {leaders.length > 0 && (
         <View style={styles.leaders}>
           <DashedLine color={c.ink} style={styles.leadersRule} />
-          <Text style={styles.leadersTitle}>Today’s leaderboard</Text>
+          <Text style={styles.leadersTitle}>{t('leaders')}</Text>
           {leaders.slice(0, wide ? 5 : 3).map((l, i) => (
             <View key={l.nick} style={styles.leader}>
               <View style={[styles.place, i === 0 && { backgroundColor: c.orange }]}>
@@ -105,28 +113,28 @@ export default function Menu() {
           ))}
         </View>
       )}
-      <Button title="Pitch the topic of the day" variant="secondary" disabled={!daily} onPress={goDaily} style={[styles.posterButton, shadow(4)]} />
+      <Button title={t('pitchDaily')} variant="secondary" disabled={!daily} onPress={goDaily} style={[styles.posterButton, shadow(4)]} />
     </View>
   );
 
   const own = (
     <Card flat style={[styles.own, wide && styles.ownWide]}>
       <View style={styles.ownText}>
-        <Label>Your own pitch</Label>
-        <H3>{wide ? 'Bring your own topic and text' : 'Your topic, text and audience'}</H3>
-        {wide && <Muted>Pick an audience. Keep your text as is, structure it, or structure and improve it — the jury will ask about it.</Muted>}
+        <Label>{t('ownLabel')}</Label>
+        <H3>{wide ? t('ownTitleWide') : t('ownTitleNarrow')}</H3>
+        {wide && <Muted>{t('ownText')}</Muted>}
       </View>
       {wide && (
         <View style={styles.audiences}>
-          {AUDIENCES.map((a) => (
+          {audiences().map((a) => (
             <Chip key={a.id} title={a.name} />
           ))}
         </View>
       )}
       {wide ? (
-        <Button title="Write a pitch" variant="secondary" onPress={() => router.push('/own')} style={shadow(4)} />
+        <Button title={t('write')} variant="secondary" onPress={() => router.push('/own')} style={shadow(4)} />
       ) : (
-        <Pressable accessibilityRole="button" accessibilityLabel="Write your own pitch" onPress={() => router.push('/own')} style={styles.ownArrow}>
+        <Pressable accessibilityRole="button" accessibilityLabel={t('writeLabel')} onPress={() => router.push('/own')} style={styles.ownArrow}>
           <TrendArrow trend="flat" size={22} color={c.ink} />
         </Pressable>
       )}
@@ -135,23 +143,24 @@ export default function Menu() {
 
   return (
     <Page>
-      {wide ? (
-        <AppHeader>
-          <Pressable accessibilityRole="link" accessibilityLabel="Your profile and progress" onPress={() => router.push('/profile')}>
+      {/* на телефоне в шапке только логотип и язык: ник и звание — в приветствии ниже */}
+      <AppHeader>
+        {wide ? (
+          <Pressable accessibilityRole="link" accessibilityLabel={t('profileLink')} onPress={() => router.push('/profile')}>
             <NickChip nick={user.nick} />
           </Pressable>
-        </AppHeader>
-      ) : null}
+        ) : null}
+      </AppHeader>
       <Container style={[styles.main, !wide && styles.mainNarrow]}>
         <View style={styles.hello}>
           <View style={styles.grow}>
-            {wide ? <H1>Hi, {user.nick}</H1> : <Small>Hi,</Small>}
-            {wide ? <Muted style={styles.lead}>Choose what you will bring to the room today.</Muted> : <Text style={styles.nickNarrow}>{user.nick}</Text>}
+            {wide ? <H1>{t('hello', { name: user.nick })}</H1> : <Small>{t('helloShort')}</Small>}
+            {wide ? <Muted style={styles.lead}>{t('lead')}</Muted> : <Text style={styles.nickNarrow}>{user.nick}</Text>}
           </View>
           {rankCard}
         </View>
         <View style={styles.levelBlock}>
-          <Label>Difficulty</Label>
+          <Label>{tc('difficulty')}</Label>
           <LevelPicker value={difficulty} onChange={setDifficulty} compact={!wide} />
         </View>
         <View style={wide ? styles.cardsWide : styles.cardsNarrow}>
@@ -164,13 +173,9 @@ export default function Menu() {
   );
 }
 
-function plural(n: number) {
-  return n === 1 ? 'round' : 'rounds';
-}
-
 const styles = StyleSheet.create({
   main: { paddingTop: 16, paddingBottom: 72, gap: 32 },
-  mainNarrow: { paddingTop: 20, paddingBottom: 32, gap: 20 },
+  mainNarrow: { paddingTop: 4, paddingBottom: 32, gap: 20 },
   grow: { flex: 1 },
   levelBlock: { gap: 8 },
   ink: { color: c.ink },

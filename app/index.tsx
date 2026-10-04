@@ -7,6 +7,7 @@ import { api } from '@/api/client';
 import { GoogleButton } from '@/auth/GoogleButton';
 import { c, font, outline, shadow } from '@/design/theme';
 import { useLayout } from '@/hooks/useLayout';
+import { useT } from '@/i18n';
 import { ART, CHARACTERS } from '@/scene/assets';
 import { useGame } from '@/store/game';
 import { AppHeader } from '@/ui/AppHeader';
@@ -14,49 +15,43 @@ import { Backdrop } from '@/ui/Backdrop';
 import { Bubble, Flower, Rays, Spark, Squiggle, Stamp, TicketButton, Valance } from '@/ui/decor';
 import { Button, Card, Container, ErrorText, Field, H2, H3, Label, Muted, P, Small, Tag } from '@/ui/primitives';
 
-const STEPS = [
-  { n: '1', title: 'You get a topic', short: 'The wheel gives you a topic', text: 'The wheel picks a simple everyday topic: your favourite food, cats or dogs, your city. Spin as many times as you like.' },
-  { n: '2', title: 'Time to prepare', short: 'A few minutes to prepare', text: 'Read the brief, look things up in other tabs, jot down notes. Need longer? Add time — we ping you when it is up.' },
-  { n: '3', title: 'You pitch and answer the jury', short: 'Pitch to the room, then jury questions', text: '1–3 minutes in front of the room, or as long as you choose, then one question from each jury member. At the end — a review and a rank.' },
-];
+// тексты шагов, реакций и режимов — в словаре landing (src/i18n/strings/landing.ts)
+const STEPS = ['1', '2', '3'] as const;
 
 const REACTIONS = [
-  { img: CHARACTERS.beanie_floral_jacket.loop[0], say: '…hello?', title: 'A long silence', text: 'Go quiet for a few seconds and the phones come out.', delta: 'the room gets bored', tilt: -5 },
-  { img: CHARACTERS.sailor_girl.idle, say: 'um…', title: 'Fillers and repeats', text: 'An “um” or a rushed line takes the sparkle away — nothing worse.', delta: 'the sparkle fades', tilt: 4 },
-  { img: CHARACTERS.bun_hoodie.idle, say: 'go on', title: 'You start talking again', text: 'The room forgives quickly: speak, and everyone looks back at you.', delta: 'attention comes back', tilt: -4, calm: true },
-  { img: CHARACTERS.beanie_orange_sweater.surprised, say: 'wow!', title: 'Confident and steady', text: 'Hold a thought without stumbling and their eyes light up.', delta: 'stars in their eyes', tilt: 5, good: true },
-];
+  { id: 'react1', img: CHARACTERS.beanie_floral_jacket.loop[0], tilt: -5 },
+  { id: 'react2', img: CHARACTERS.sailor_girl.idle, tilt: 4 },
+  { id: 'react3', img: CHARACTERS.bun_hoodie.idle, tilt: -4, calm: true },
+  { id: 'react4', img: CHARACTERS.beanie_orange_sweater.surprised, tilt: 5, good: true },
+] as const;
 
-const MODES = [
-  { label: 'Training', title: 'The wheel gives you a topic', text: 'Category → case → ready-made topic. Every case has a hidden catch that the jury builds its questions on.' },
-  { label: 'Topic of the day', title: 'One topic for everyone', text: 'Today everyone pitches the same thing. Your best score of the day goes to the leaderboard.' },
-  { label: 'Your own pitch', title: 'Your topic and text', text: 'Pick an audience: contest jury, business people, teachers or the general public. The text can be structured and improved.' },
-];
+const MODES = ['mode1', 'mode2', 'mode3'] as const;
 
 // лучи рампы в финальной секции — чуть светлее оранжевого
 const RAY = '#F9B947';
 
 const RANKS = [
-  { title: 'Novice', range: 'under 40', tilt: -7 },
-  { title: 'Speaker', range: '40–59', tilt: 5 },
-  { title: 'Pitcher', range: '60–74', tilt: -4 },
-  { title: 'Orator', range: '75–87', tilt: 8 },
-  { title: 'Legend', range: '88 and up', tilt: -6, top: true },
-];
+  { id: 'novice', range: 'under', tilt: -7 },
+  { id: 'speaker', range: '40–59', tilt: 5 },
+  { id: 'pitcher', range: '60–74', tilt: -4 },
+  { id: 'orator', range: '75–87', tilt: 8 },
+  { id: 'legend', range: 'up', tilt: -6, top: true },
+] as const;
 
 /** Заголовок с волнистым подчёркиванием под последним словом. */
 function Headline({ size }: { size: number }) {
-  const words = ['Pitch', 'to', 'a', 'room', 'that'];
+  const t = useT('landing');
+  const words = t('headline').split(' ');
   const style = { fontFamily: font.display, fontSize: size, lineHeight: size * 1.12, color: c.ink };
   return (
-    <View style={styles.headline} accessibilityRole="header" accessibilityLabel="Pitch to a room that reacts">
-      {words.map((w) => (
-        <Text key={w} style={style}>
+    <View style={styles.headline} accessibilityRole="header" accessibilityLabel={`${t('headline')} ${t('headlineLast')}`}>
+      {words.map((w, i) => (
+        <Text key={i} style={style}>
           {w}{' '}
         </Text>
       ))}
       <View>
-        <Text style={style}>reacts</Text>
+        <Text style={style}>{t('headlineLast')}</Text>
         <View style={styles.squiggle}>
           <Squiggle />
         </View>
@@ -66,6 +61,8 @@ function Headline({ size }: { size: number }) {
 }
 
 export default function Landing() {
+  const t = useT('landing');
+  const tc = useT('common');
   const { wide, width } = useLayout();
   const user = useGame((s) => s.user);
   const signIn = useGame((s) => s.signIn);
@@ -114,7 +111,7 @@ export default function Landing() {
     try {
       done(await api.google(idToken));
     } catch (e) {
-      setError(`Could not sign in with Google: ${(e as Error).message.replace(/^\d+: /, '')}`);
+      setError(t('errGoogle', { message: (e as Error).message.replace(/^\d+: /, '') }));
     } finally {
       setLoading(false);
     }
@@ -144,9 +141,10 @@ export default function Landing() {
       }
       done(await api.login(email.trim(), password));
     } catch (e) {
-      const message = (e as Error).message.replace(/^\d+: /, '');
-      // почта не подтверждена — отправляем новый код и просим его ввести
-      if (!pending && !creating && message.startsWith('Confirm your email')) {
+      const raw = (e as Error).message;
+      const message = raw.replace(/^\d+: /, '');
+      // почта не подтверждена (вход отвечает 403; текст сервер может прислать на другом языке) — отправляем новый код и просим его ввести
+      if (!pending && !creating && (raw.startsWith('403') || message.startsWith('Confirm your email'))) {
         try {
           const sent = await api.resendCode(email.trim());
           setCode('');
@@ -155,7 +153,7 @@ export default function Landing() {
           // код не отправился — покажем исходную ошибку
         }
       }
-      setError(pending ? message : creating ? `Could not create the account: ${message}` : `Could not sign in: ${message}`);
+      setError(pending ? message : creating ? t('errCreate', { message }) : t('errSignIn', { message }));
     } finally {
       setLoading(false);
     }
@@ -164,7 +162,7 @@ export default function Landing() {
   const validEmail = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim());
   const canEnter = pending ? code.trim().length >= 4 : validEmail && password.length >= 6 && (!creating || nick.trim().length >= 2);
 
-  const cta = <TicketButton title="Start training" stubTop="entry" stubBottom="free" onPress={start} stretch={!wide} />;
+  const cta = <TicketButton title={t('cta')} stubTop={t('ctaStubTop')} stubBottom={t('ctaStubBottom')} onPress={start} stretch={!wide} />;
 
   return (
     <View style={styles.page}>
@@ -175,33 +173,31 @@ export default function Landing() {
         contentContainerStyle={[styles.grow, { paddingTop: insets.top, paddingBottom: insets.bottom, paddingLeft: insets.left, paddingRight: insets.right }]}
         scrollIndicatorInsets={{ top: insets.top, bottom: insets.bottom }}>
         <AppHeader home="/">
-          <Button title={user ? 'Menu' : 'Sign in'} variant="secondary" size="sm" onPress={start} style={wide ? shadow(3) : undefined} />
+          <Button title={user ? tc('menu') : t('signIn')} variant="secondary" size="sm" onPress={start} style={wide ? shadow(3) : undefined} />
         </AppHeader>
 
         {/* Первый экран */}
         <Container style={[styles.hero, wide ? styles.heroWide : styles.heroNarrow]}>
           <View style={[styles.heroText, wide && styles.heroTextWide]}>
-            <Tag>Public speaking trainer</Tag>
+            <Tag>{t('tag')}</Tag>
             <Headline size={wide ? 54 : 31} />
             <Muted style={wide ? styles.lead : undefined}>
-              {wide
-                ? 'You pitch to a drawn audience and a table of three jury members. Speak with confidence and their eyes light up; go quiet for too long and the phones come out. Then the jury asks questions out loud and AI reviews your pitch.'
-                : 'Speak with confidence and their eyes light up; go quiet and the phones come out. Then the jury asks questions and AI reviews your pitch.'}
+              {wide ? t('leadWide') : t('leadNarrow')}
             </Muted>
             {wide ? (
               <>
                 <View style={styles.ctaRow}>
                   {cta}
-                  <Button title="How it works" variant="secondary" onPress={() => jump('how')} />
+                  <Button title={t('howItWorks')} variant="secondary" onPress={() => jump('how')} />
                 </View>
-                <Small>Free. You need a camera and a microphone.</Small>
+                <Small>{t('free')}</Small>
               </>
             ) : (
               <View style={styles.stepsNarrow}>
-                {STEPS.map((s) => (
-                  <View key={s.n} style={styles.stepRow}>
-                    <Text style={styles.stepRowNum}>{s.n}</Text>
-                    <Text style={styles.stepRowText}>{s.short}</Text>
+                {STEPS.map((n) => (
+                  <View key={n} style={styles.stepRow}>
+                    <Text style={styles.stepRowNum}>{n}</Text>
+                    <Text style={styles.stepRowText}>{t(`step${n}.short`)}</Text>
                   </View>
                 ))}
               </View>
@@ -211,14 +207,14 @@ export default function Landing() {
             <View style={styles.heroArt}>
               <View style={styles.heroFrame}>
                 <View style={styles.heroClip}>
-                  <Image source={ART.hero} style={styles.heroImage} resizeMode="cover" accessibilityLabel="The stage: ten audience members, silhouettes behind them, the jury at a table in front" />
+                  <Image source={ART.hero} style={styles.heroImage} resizeMode="cover" accessibilityLabel={t('heroImage')} />
                 </View>
               </View>
             </View>
           ) : (
             <View style={styles.ctaNarrow}>
               {cta}
-              <Small style={styles.center}>Free. You need a camera and a microphone.</Small>
+              <Small style={styles.center}>{t('free')}</Small>
             </View>
           )}
         </Container>
@@ -229,13 +225,13 @@ export default function Landing() {
             <View style={styles.dark} onLayout={mark('how')}>
               <Valance width={width} />
               <Container style={styles.section}>
-                <H2 style={styles.onInk}>How it works</H2>
+                <H2 style={styles.onInk}>{t('howItWorks')}</H2>
                 <View style={styles.row}>
-                  {STEPS.map((s) => (
-                    <View key={s.n} style={styles.stepCard}>
-                      <Text style={styles.stepNum}>{s.n}</Text>
-                      <H3>{s.title}</H3>
-                      <Muted>{s.text}</Muted>
+                  {STEPS.map((n) => (
+                    <View key={n} style={styles.stepCard}>
+                      <Text style={styles.stepNum}>{n}</Text>
+                      <H3>{t(`step${n}.title`)}</H3>
+                      <Muted>{t(`step${n}.text`)}</Muted>
                     </View>
                   ))}
                 </View>
@@ -245,33 +241,37 @@ export default function Landing() {
             {/* Зал живой */}
             <Container style={styles.section}>
               <View style={styles.sectionHead}>
-                <H2>The room is alive</H2>
-                <Muted style={styles.lead}>The audience listens with you: it lights up while you speak with confidence and drifts away when you stop.</Muted>
+                <H2>{t('roomTitle')}</H2>
+                <Muted style={styles.lead}>{t('roomLead')}</Muted>
               </View>
               <View style={styles.row}>
-                {REACTIONS.map((r) => (
-                  <Card key={r.title} tone={r.good ? 'accent' : 'paper'} style={styles.reaction}>
-                    <View>
-                      <Image source={r.img} style={styles.reactionImage} resizeMode="contain" />
-                      <Bubble text={r.say} dark={r.good} tilt={r.tilt} style={{ top: 4, left: 0 }} />
-                    </View>
-                    <H3 style={styles.reactionTitle}>{r.title}</H3>
-                    {r.good ? <P style={styles.reactionText}>{r.text}</P> : <Muted style={styles.reactionText}>{r.text}</Muted>}
-                    <Text style={[styles.delta, (r.good || r.calm) && { color: c.ink }]}>{r.delta}</Text>
-                  </Card>
-                ))}
+                {REACTIONS.map((r) => {
+                  const good = 'good' in r && r.good;
+                  const calm = 'calm' in r && r.calm;
+                  return (
+                    <Card key={r.id} tone={good ? 'accent' : 'paper'} style={styles.reaction}>
+                      <View>
+                        <Image source={r.img} style={styles.reactionImage} resizeMode="contain" />
+                        <Bubble text={t(`${r.id}.say`)} dark={good} tilt={r.tilt} style={{ top: 4, left: 0 }} />
+                      </View>
+                      <H3 style={styles.reactionTitle}>{t(`${r.id}.title`)}</H3>
+                      {good ? <P style={styles.reactionText}>{t(`${r.id}.text`)}</P> : <Muted style={styles.reactionText}>{t(`${r.id}.text`)}</Muted>}
+                      <Text style={[styles.delta, (good || calm) && { color: c.ink }]}>{t(`${r.id}.delta`)}</Text>
+                    </Card>
+                  );
+                })}
               </View>
             </Container>
 
             {/* Режимы */}
             <Container style={[styles.section, styles.noTop]}>
-              <H2>Three modes</H2>
+              <H2>{t('modesTitle')}</H2>
               <View style={styles.row}>
                 {MODES.map((m) => (
-                  <Card key={m.label} style={styles.mode}>
-                    <Label>{m.label}</Label>
-                    <H3 style={styles.modeTitle}>{m.title}</H3>
-                    <Muted>{m.text}</Muted>
+                  <Card key={m} style={styles.mode}>
+                    <Label>{t(`${m}.label`)}</Label>
+                    <H3 style={styles.modeTitle}>{t(`${m}.title`)}</H3>
+                    <Muted>{t(`${m}.text`)}</Muted>
                   </Card>
                 ))}
               </View>
@@ -281,12 +281,20 @@ export default function Landing() {
             <Container style={[styles.section, styles.noTop]}>
               <Card flat style={styles.ranks}>
                 <View style={styles.sectionHead}>
-                  <H2 style={styles.ranksTitle}>Progress is your rank</H2>
-                  <Muted>It is based on the average score of your last five rounds. It can go up and down.</Muted>
+                  <H2 style={styles.ranksTitle}>{t('ranksTitle')}</H2>
+                  <Muted>{t('ranksText')}</Muted>
                 </View>
                 <View style={styles.stamps}>
                   {RANKS.map((r) => (
-                    <Stamp key={r.title} title={r.title} caption={r.range} captionBelow size={148} tilt={r.tilt} fill={r.top ? c.orange : undefined} />
+                    <Stamp
+                      key={r.id}
+                      title={tc(`rank.${r.id}`)}
+                      caption={r.range === 'under' ? t('rankUnder', { n: 40 }) : r.range === 'up' ? t('rankUp', { n: 88 }) : r.range}
+                      captionBelow
+                      size={148}
+                      tilt={r.tilt}
+                      fill={'top' in r && r.top ? c.orange : undefined}
+                    />
                   ))}
                 </View>
               </Card>
@@ -316,20 +324,20 @@ export default function Landing() {
               </View>
               <Container style={styles.finalInner}>
                 <View style={styles.finalTag}>
-                  <Text style={styles.finalTagText}>Curtain up</Text>
+                  <Text style={styles.finalTagText}>{t('curtain')}</Text>
                 </View>
-                <H2 style={styles.finalTitle}>The room is waiting. Step out.</H2>
-                <TicketButton title="Start training" stubTop="entry" stubBottom="free" onPress={start} style={styles.finalTicket} />
+                <H2 style={styles.finalTitle}>{t('finalTitle')}</H2>
+                <TicketButton title={t('cta')} stubTop={t('ctaStubTop')} stubBottom={t('ctaStubBottom')} onPress={start} style={styles.finalTicket} />
               </Container>
             </>
           )}
           <View style={[styles.rowImage, !wide && styles.rowImageNarrow]}>
-            <Image source={ART.row} style={styles.heroImage} resizeMode="contain" accessibilityLabel="Ten audience members in a row" />
+            <Image source={ART.row} style={styles.heroImage} resizeMode="contain" accessibilityLabel={t('rowImage')} />
             {wide && (
               <>
-                <Bubble text="we’re waiting!" tilt={-6} style={{ left: '6%', top: -6 }} />
-                <Bubble text="your turn" dark tilt={5} style={{ left: '46%', top: 2 }} />
-                <Bubble text="go on!" tilt={7} style={{ right: '7%', top: -2 }} />
+                <Bubble text={t('bubbleWaiting')} tilt={-6} style={{ left: '6%', top: -6 }} />
+                <Bubble text={t('bubbleTurn')} dark tilt={5} style={{ left: '46%', top: 2 }} />
+                <Bubble text={t('bubbleGo')} tilt={7} style={{ right: '7%', top: -2 }} />
               </>
             )}
           </View>
@@ -337,24 +345,20 @@ export default function Landing() {
       </ScrollView>
 
       <Modal visible={loginOpen} transparent animationType="fade" onRequestClose={() => setLoginOpen(false)}>
-        <Pressable style={styles.backdrop} onPress={() => setLoginOpen(false)} accessibilityLabel="Close">
+        <Pressable style={styles.backdrop} onPress={() => setLoginOpen(false)} accessibilityLabel={tc('close')}>
           <Pressable style={styles.loginWrap} onPress={() => {}}>
             <Card style={styles.login}>
               {pending ? (
                 <>
-                  <Label>Confirm your email</Label>
-                  <H3>Enter the code</H3>
-                  <Small>
-                    {pending.sent
-                      ? `We sent a 6-digit code to ${pending.email}. It works for 15 minutes.`
-                      : `Mail is not set up on this server, so the code is shown right here: ${pending.devCode ?? 'see the server log'}.`}
-                  </Small>
-                  <Field placeholder="6-digit code" value={code} onChangeText={setCode} keyboardType="number-pad" maxLength={6} autoFocus onSubmitEditing={() => canEnter && enter()} accessibilityLabel="Confirmation code" />
+                  <Label>{t('confirmEmail')}</Label>
+                  <H3>{t('enterCode')}</H3>
+                  <Small>{pending.sent ? t('codeSent', { email: pending.email }) : t('codeHere', { code: pending.devCode ?? t('codeInLog') })}</Small>
+                  <Field placeholder={t('codePlaceholder')} value={code} onChangeText={setCode} keyboardType="number-pad" maxLength={6} autoFocus onSubmitEditing={() => canEnter && enter()} accessibilityLabel={t('codeLabel')} />
                   <ErrorText>{error}</ErrorText>
-                  <Button title="Confirm and step out" onPress={enter} disabled={!canEnter} loading={loading} />
+                  <Button title={t('confirm')} onPress={enter} disabled={!canEnter} loading={loading} />
                   <View style={styles.codeLinks}>
-                    <Button title="Send a new code" variant="secondary" size="sm" onPress={resend} />
-                    <Button title="Back" variant="secondary" size="sm" onPress={() => (setPending(null), setError(''))} />
+                    <Button title={t('resend')} variant="secondary" size="sm" onPress={resend} />
+                    <Button title={tc('back')} variant="secondary" size="sm" onPress={() => (setPending(null), setError(''))} />
                   </View>
                 </>
               ) : (
@@ -367,25 +371,25 @@ export default function Landing() {
                         accessibilityState={{ selected: creating === mode }}
                         onPress={() => (setCreating(mode), setError(''))}
                         style={[styles.tab, creating === mode && styles.tabOn]}>
-                        <Text style={[styles.tabText, creating === mode && styles.tabTextOn]}>{mode ? 'Create account' : 'Sign in'}</Text>
+                        <Text style={[styles.tabText, creating === mode && styles.tabTextOn]}>{mode ? t('createAccount') : t('signIn')}</Text>
                       </Pressable>
                     ))}
                   </View>
-                  <H3>{creating ? 'How should we announce you?' : 'Welcome back'}</H3>
+                  <H3>{creating ? t('announce') : t('welcomeBack')}</H3>
                   {googleId && (
                     <>
                       <GoogleButton clientId={googleId} onToken={withGoogle} onError={setError} />
                       <View style={styles.or}>
                         <View style={styles.orLine} />
-                        <Text style={styles.orText}>or with email</Text>
+                        <Text style={styles.orText}>{t('orEmail')}</Text>
                         <View style={styles.orLine} />
                       </View>
                     </>
                   )}
-                  <Field placeholder="Email" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} maxLength={200} autoFocus accessibilityLabel="Email" />
-                  {creating && <Field placeholder="Nickname — shown on the leaderboard" value={nick} onChangeText={setNick} autoCapitalize="none" autoCorrect={false} maxLength={50} accessibilityLabel="Nickname" />}
+                  <Field placeholder={t('email')} value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} maxLength={200} autoFocus accessibilityLabel={t('email')} />
+                  {creating && <Field placeholder={t('nickPlaceholder')} value={nick} onChangeText={setNick} autoCapitalize="none" autoCorrect={false} maxLength={50} accessibilityLabel={t('nick')} />}
                   <Field
-                    placeholder={creating ? 'Password, at least 6 characters' : 'Password'}
+                    placeholder={creating ? t('passwordNew') : t('password')}
                     value={password}
                     onChangeText={setPassword}
                     secureTextEntry
@@ -393,15 +397,11 @@ export default function Landing() {
                     autoCorrect={false}
                     maxLength={100}
                     onSubmitEditing={() => canEnter && enter()}
-                    accessibilityLabel="Password"
+                    accessibilityLabel={t('password')}
                   />
                   <ErrorText>{error}</ErrorText>
-                  <Button title={creating ? 'Create account' : 'Step out'} onPress={enter} disabled={!canEnter} loading={loading} />
-                  <Small>
-                    {creating
-                      ? 'Your nickname shows on the leaderboard. Played before under a nickname? Use the same one — your rounds stay with you.'
-                      : 'Your rounds, rank and progress are kept in your account.'}
-                  </Small>
+                  <Button title={creating ? t('createAccount') : t('stepOut')} onPress={enter} disabled={!canEnter} loading={loading} />
+                  <Small>{creating ? t('nickNote') : t('accountNote')}</Small>
                 </>
               )}
             </Card>

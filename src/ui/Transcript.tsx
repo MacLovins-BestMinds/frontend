@@ -3,26 +3,34 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { Delivery, TimelineEvent } from '@/api/types';
 import { c, font, formatTime } from '@/design/theme';
+import { translate, useT } from '@/i18n';
 
-import { PitchPlayer, type PitchPlayerHandle } from './PitchPlayer';
+import { PitchPlayer, type PitchPlayerHandle, type PlayerMark } from './PitchPlayer';
 import { Card, H3, Small } from './primitives';
 
-export const MARK: Record<TimelineEvent['type'], { color: string; name: string }> = {
-  filler: { color: c.markFiller, name: 'filler word' },
-  repeat: { color: c.markRepeat, name: 'repeat' },
-  profanity: { color: c.markSwear, name: 'swearing' },
-  long_pause: { color: c.markPause, name: 'pause mid-phrase' },
-  hesitation: { color: c.markPause, name: 'hesitation' },
-  pace: { color: c.markPace, name: 'pace' },
-  gaze_off: { color: c.markGaze, name: 'looking away' },
-  good_pause: { color: c.markPause, name: 'pause' },
+/** Цвет отметки по типу; название — markName (словарь review). */
+export const MARK: Record<TimelineEvent['type'], { color: string }> = {
+  filler: { color: c.markFiller },
+  repeat: { color: c.markRepeat },
+  profanity: { color: c.markSwear },
+  long_pause: { color: c.markPause },
+  hesitation: { color: c.markPause },
+  pace: { color: c.markPace },
+  gaze_off: { color: c.markGaze },
+  // удачная пауза — не ошибка: зелёная, как сильные моменты хода мысли
+  good_pause: { color: c.markGood },
 };
 const LEGEND = ['filler', 'repeat', 'long_pause', 'pace'] as const;
+
+/** Название отметки на текущем языке: «filler word», «слово-паразит». */
+export function markName(type: TimelineEvent['type']): string {
+  return type in MARK ? translate('review', `mark.${type}`) : type;
+}
 
 /** Подпись отметки на дорожке плеера: у паразита и повтора текст — одно слово, добавляем, что это. */
 export function markLabel(e: TimelineEvent): string {
   if (e.type !== 'filler' && e.type !== 'repeat' && e.type !== 'profanity') return e.text;
-  const name = MARK[e.type].name;
+  const name = markName(e.type);
   return `${name[0].toUpperCase()}${name.slice(1)} ${e.text}`;
 }
 
@@ -34,10 +42,11 @@ type Piece = { from: number; to: number; event?: TimelineEvent; badge?: string; 
 
 /** Подпись значка между словами: «… 3.6 s …» для паузы, «fast · 196/min» для темпа, «eyes away · 4 s» для взгляда. */
 function badge(e: TimelineEvent): string {
-  const n = e.text.match(/\d+(\.\d+)?/)?.[0] ?? '';
-  if (e.type === 'gaze_off') return `eyes away · ${n} s`;
-  if (e.type === 'pace') return `${e.text.includes('fast') ? 'fast' : 'slow'} · ${n}/min`;
-  return `… ${n} s …`;
+  // текст события сервер может прислать на языке интерфейса: число бывает и с запятой
+  const n = e.text.match(/\d+([.,]\d+)?/)?.[0] ?? '';
+  if (e.type === 'gaze_off') return translate('review', 'badgeGaze', { n });
+  if (e.type === 'pace') return translate('review', /fast|быстр|rapid/i.test(e.text) ? 'badgeFast' : 'badgeSlow', { n });
+  return translate('review', 'badgePause', { n });
 }
 
 /** Все ошибки прямо в тексте: бэкенд отдаёт место каждой (start/end в символах транскрипта). */
@@ -89,6 +98,12 @@ type Props = {
   noRecording: string;
   /** Запись заиграла — можно остановить другой плеер. */
   onPlay?: () => void;
+  /** Где своя запись текста и играет ли она — для нарезки ошибок и хода мысли. */
+  onTime?: (seconds: number, playing: boolean) => void;
+  /** Ещё отметки на дорожку своего плеера — моменты хода мысли. */
+  extraMarks?: PlayerMark[];
+  /** Что показать сразу под своим плеером — нарезку ошибок. */
+  aside?: ReactNode;
   /**
    * Время ведёт видео со звуком: своего плеера у текста нет, слово подсвечивается по видео,
    * а нажатие на слово или отметку перематывает видео.
@@ -100,14 +115,22 @@ type Props = {
  * Транскрипт со своим плеером во всю ширину: ошибки отмечены прямо в тексте, а слово, которое звучит сейчас,
  * подсвечено. Нажатие на слово или отметку перематывает запись туда.
  */
-export const Transcript = forwardRef<TranscriptHandle, Props>(function Transcript({ delivery, audioUri, duration, wide, noRecording, onPlay, media }, ref) {
+export const Transcript = forwardRef<TranscriptHandle, Props>(function Transcript(
+  { delivery, audioUri, duration, wide, noRecording, onPlay, onTime, extraMarks, aside, media },
+  ref,
+) {
+  const t = useT('review');
   const player = useRef<PitchPlayerHandle>(null);
   const [now, setNow] = useState<{ time: number; playing: boolean }>({ time: 0, playing: false });
   const { transcript, events } = delivery;
   const words = useMemo(() => delivery.words ?? [], [delivery.words]);
-  const pieces = useMemo(() => markTranscript(transcript, events), [transcript, events]);
-  // на дорожке текста — только то, что отмечено в тексте; взгляд живёт на дорожке видео
-  const marks = useMemo(() => events.filter((e) => e.type !== 'gaze_off').map((e) => ({ t: e.t, color: MARK[e.type]?.color ?? c.markPause, label: markLabel(e) })), [events]);
+  // подписи значков и отметок — на языке интерфейса: пересчитываем и при его смене (t меняется вместе с языком)
+  const pieces = useMemo(() => markTranscript(transcript, events), [transcript, events, t]);
+  // на дорожке текста — то, что отмечено в тексте, и моменты хода мысли; взгляд живёт на дорожке видео
+  const marks = useMemo(
+    () => [...events.filter((e) => e.type !== 'gaze_off').map((e) => ({ t: e.t, color: MARK[e.type]?.color ?? c.markPause, label: markLabel(e) })), ...(extraMarks ?? [])],
+    [events, extraMarks, t],
+  );
 
   const follow = useRef(media);
   follow.current = media;
@@ -149,24 +172,25 @@ export const Transcript = forwardRef<TranscriptHandle, Props>(function Transcrip
     return nodes;
   };
 
-  const legend = [...LEGEND, ...(events.some((e) => e.type === 'profanity') ? (['profanity'] as const) : []), ...(events.some((e) => e.type === 'gaze_off') ? (['gaze_off'] as const) : [])];
+  const has = (type: TimelineEvent['type']) => events.some((e) => e.type === type);
+  const legend = [...LEGEND, ...(has('profanity') ? (['profanity'] as const) : []), ...(has('gaze_off') ? (['gaze_off'] as const) : []), ...(has('good_pause') ? (['good_pause'] as const) : [])];
 
   return (
     <Card flat style={[styles.card, wide && styles.cardWide]}>
       <View style={styles.head}>
-        <H3 style={styles.title}>Transcript</H3>
+        <H3 style={styles.title}>{t('transcript')}</H3>
         <View style={styles.legend}>
-          {legend.map((t) => (
-            <View key={t} style={styles.legendItem}>
-              <View style={[styles.swatch, { backgroundColor: MARK[t].color }]} />
-              <Text style={styles.legendText}>{MARK[t].name}</Text>
+          {legend.map((type) => (
+            <View key={type} style={styles.legendItem}>
+              <View style={[styles.swatch, { backgroundColor: MARK[type].color }]} />
+              <Text style={styles.legendText}>{markName(type)}</Text>
             </View>
           ))}
         </View>
       </View>
 
       {media ? (
-        <Small>{words.length ? 'The word you are saying is highlighted as the video plays. Tap any word or marker to jump there.' : 'Tap a marker to jump the video to that moment.'}</Small>
+        <Small>{words.length ? t('videoWords') : t('videoMarks')}</Small>
       ) : audioUri ? (
         <>
           <PitchPlayer
@@ -176,10 +200,12 @@ export const Transcript = forwardRef<TranscriptHandle, Props>(function Transcrip
             marks={marks}
             onTime={(time, playing) => {
               setNow({ time, playing });
+              onTime?.(time, playing);
               if (playing && !now.playing) onPlay?.();
             }}
           />
-          <Small>{words.length ? 'The word you are saying is highlighted. Tap any word or marker to jump there.' : 'Tap a marker to play from that moment, or drag the slider.'}</Small>
+          {aside}
+          <Small>{words.length ? t('audioWords') : t('audioMarks')}</Small>
         </>
       ) : (
         <Small>{noRecording}</Small>

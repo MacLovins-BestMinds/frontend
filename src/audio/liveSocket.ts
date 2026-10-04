@@ -1,4 +1,5 @@
 import { env } from '@/config/env';
+import { getLang } from '@/i18n';
 
 import type { LiveEvent } from './live';
 
@@ -15,7 +16,7 @@ export type LiveSocket = { send: (pcm: ArrayBuffer) => void; close: () => void }
  * зал пока реагирует только на голос и тишину, а сокет раз в 20 с пробует снова. Куски, пришедшие без связи, теряются.
  */
 export function openLiveSocket(roundId: string, pace: string, maxSec: number | undefined, onEvent: (e: LiveEvent) => void): LiveSocket {
-  const query = `round_id=${encodeURIComponent(roundId)}&pace=${pace}${maxSec ? `&max_sec=${Math.round(maxSec)}` : ''}`;
+  const query = `round_id=${encodeURIComponent(roundId)}&pace=${pace}&lang=${getLang()}${maxSec ? `&max_sec=${Math.round(maxSec)}` : ''}`;
   const url = env.apiUrl.replace(/\/$/, '').replace(/^http/, 'ws') + `/api/ai/live?${query}`;
   let ws: WebSocket | null = null;
   let closed = false;

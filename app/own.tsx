@@ -1,40 +1,59 @@
-import { Redirect, router } from 'expo-router';
-import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Redirect, router, useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+
+import { renderSlides } from '@/slides/render';
+import { SlideFrame } from '@/ui/SlideFrame';
 
 import { api } from '@/api/client';
 import * as DocumentPicker from 'expo-document-picker';
 
 import type { AudienceId, FitSlides, PickedFile, RefineResponse } from '@/api/types';
-import { AUDIENCES } from '@/content/audiences';
+import { audiences } from '@/content/audiences';
 import { c, font, outline, shadow } from '@/design/theme';
 import { useLayout } from '@/hooks/useLayout';
+import { useT } from '@/i18n';
 import { useGame } from '@/store/game';
 import { AppHeader } from '@/ui/AppHeader';
 import { goBack } from '@/ui/nav';
 import { TicketButton } from '@/ui/decor';
-import { Button, Card, Container, ErrorText, Field, H1, H3, Label, Muted, P, Page, Small } from '@/ui/primitives';
+import { Button, Card, Container, ErrorText, Field, H1, Label, Muted, Page, Small } from '@/ui/primitives';
 
 type RefineMode = 'structure' | 'improve';
 
 export default function OwnPitch() {
+  const t = useT('own');
+  const tc = useT('common');
   const { wide } = useLayout();
   const user = useGame((s) => s.user);
   const startOwnPitch = useGame((s) => s.startOwnPitch);
+  const slides = useGame((s) => s.slides);
+  const setSlides = useGame((s) => s.setSlides);
+  const [slideAt, setSlideAt] = useState(0);
+  // экран остаётся под сценой: стрелки должны листать слайды только там, где игрок сейчас находится
+  const [focused, setFocused] = useState(false);
+  useFocusEffect(
+    useCallback(() => {
+      setFocused(true);
+      return () => setFocused(false);
+    }, []),
+  );
   const [title, setTitle] = useState('');
   const [audience, setAudience] = useState<AudienceId>('business');
   const [text, setText] = useState('');
   const [original, setOriginal] = useState('');
   const [refined, setRefined] = useState<RefineResponse | null>(null);
-  const [loading, setLoading] = useState<RefineMode | 'slides' | null>(null);
+  const [loading, setLoading] = useState<RefineMode | 'slides' | 'show' | null>(null);
   const [deck, setDeck] = useState<PickedFile | null>(null);
   const [fitted, setFitted] = useState<FitSlides | null>(null);
   const [error, setError] = useState('');
+  // что ИИ поменял и исходный текст — по нажатию, чтобы карточка с результатом оставалась короткой
+  const [details, setDetails] = useState(false);
 
   if (!user) return <Redirect href="/" />;
 
   const refine = async (mode: RefineMode) => {
-    if (!text.trim()) return setError('Write your talking points or pitch text first');
+    if (!text.trim()) return setError(t('errNoText'));
     setError('');
     setLoading(mode);
     try {
@@ -42,8 +61,9 @@ export default function OwnPitch() {
       const source = original || text;
       if (!original) setOriginal(text);
       setRefined(await api.refine(source.trim(), audience, mode));
+      setDetails(false);
     } catch (e) {
-      setError(`The AI helper did not respond: ${(e as Error).message}`);
+      setError(t('errAi', { message: (e as Error).message }));
     } finally {
       setLoading(null);
     }
@@ -59,6 +79,8 @@ export default function OwnPitch() {
     const asset = picked.assets[0];
     setDeck({ uri: asset.uri, name: asset.name, mimeType: asset.mimeType ?? undefined, file: asset.file });
     setFitted(null);
+    setSlides([]);
+    setSlideAt(0);
   };
 
   /** Раскладывает питч по слайдам: что говорить на каждом. Слайд про демо становится «Demo time.». */
@@ -70,41 +92,56 @@ export default function OwnPitch() {
       if (!original) setOriginal(text);
       setFitted(await api.fitSlides(deck, title.trim(), (original || text).trim(), audience));
     } catch (e) {
-      setError(`Could not fit the text to the slides: ${(e as Error).message.replace(/^\d+: /, '')}`);
+      setError(t('errFit', { message: (e as Error).message.replace(/^\d+: /, '') }));
+    } finally {
+      setLoading(null);
+    }
+  };
+
+  /** Показ с презентацией: слайды будут стоять на сцене рядом с камерой, листаются стрелками. */
+  const present = async () => {
+    if (!deck) return;
+    setError('');
+    setLoading('show');
+    try {
+      setSlides(await renderSlides(deck));
+      setSlideAt(0);
+    } catch (e) {
+      setError((e as Error).message);
     } finally {
       setLoading(null);
     }
   };
 
   const start = () => {
-    if (!title.trim()) return setError('Add the name of your idea or the topic of the pitch');
-    if (!text.trim()) return setError('Add at least a couple of sentences or talking points');
+    if (!title.trim()) return setError(t('errTitle'));
+    if (!text.trim()) return setError(t('errBody'));
     startOwnPitch({ title: title.trim(), text: text.trim(), audience });
     router.push('/prep');
   };
 
   return (
-    <Page sticky>
+    <Page sticky footer={<TicketButton title={t('next')} stubTop={tc('minutes', { n: 5 })} stubBottom="→" onPress={start} stretch={!wide} />}>
       <AppHeader glass back={() => goBack()} />
       <Container style={[styles.main, wide && styles.mainWide]}>
         <View style={[styles.col, wide && styles.colWide]}>
-          <H1 style={!wide && styles.titleNarrow}>Your own pitch</H1>
-          <Muted>Pitch your own idea. Pick an audience and write the text — the jury will ask about it.</Muted>
+          <H1 style={!wide && styles.titleNarrow}>{t('title')}</H1>
+          <Muted>{t('lead')}</Muted>
           <Card flat>
-            <Label>1. Topic or project name</Label>
+            <Label>{t('step1')}</Label>
             <Field
-              placeholder="For example: a smart coffee machine that remembers your order"
+              placeholder={t('titlePlaceholder')}
               value={title}
               onChangeText={(v) => (setTitle(v), setError(''))}
               maxLength={120}
-              accessibilityLabel="Topic or project name"
+              accessibilityLabel={t('titleLabel')}
             />
           </Card>
           <Card flat>
-            <Label>2. Who you are pitching to</Label>
-            <Small>The audience changes the style of the jury questions and how strict the room is.</Small>
+            <Label>{t('step2')}</Label>
+            <Small>{t('audienceNote')}</Small>
             <View style={styles.audiences}>
-              {AUDIENCES.map((a) => {
+              {audiences().map((a) => {
                 const selected = a.id === audience;
                 return (
                   <Pressable
@@ -124,34 +161,51 @@ export default function OwnPitch() {
         </View>
         <View style={[styles.col, wide && styles.colWide]}>
           <Card flat>
-            <Label>3. Pitch text or talking points</Label>
+            <Label>{t('step3')}</Label>
             <Field
-              placeholder="What the problem is, what you offer, why you, and what you are asking for"
+              placeholder={t('textPlaceholder')}
               value={text}
               onChangeText={(v) => (setText(v), setError(''))}
               multiline
               maxLength={5000}
-              accessibilityLabel="Pitch text"
+              accessibilityLabel={t('textLabel')}
               style={styles.text}
             />
             <View style={styles.refine}>
-              <Button title="Structure" variant="secondary" size="sm" loading={loading === 'structure'} disabled={loading !== null} onPress={() => refine('structure')} />
-              <Button title="Structure and improve" variant="secondary" size="sm" loading={loading === 'improve'} disabled={loading !== null} onPress={() => refine('improve')} />
+              <Button title={t('structure')} variant="secondary" size="sm" loading={loading === 'structure'} disabled={loading !== null} onPress={() => refine('structure')} />
+              <Button title={t('improve')} variant="secondary" size="sm" loading={loading === 'improve'} disabled={loading !== null} onPress={() => refine('improve')} />
             </View>
-            <Small>You can keep it as is — then just go on stage.</Small>
+            <Small>{t('keep')}</Small>
           </Card>
           <Card flat>
-            <Label>4. Presentation (optional)</Label>
-            <Small>Upload your slides as PDF or PPTX and the text will be laid out slide by slide. A slide about a demo becomes “Demo time”.</Small>
+            <Label>{t('step4')}</Label>
+            <Small>{t('deckNote')}</Small>
             <View style={styles.refine}>
-              <Button title={deck ? 'Choose another file' : 'Upload slides'} variant="secondary" size="sm" disabled={loading !== null} onPress={pickDeck} />
-              {deck && <Button title="Fit text to slides" size="sm" loading={loading === 'slides'} disabled={loading !== null} onPress={fit} />}
+              <Button title={deck ? t('chooseAnother') : t('upload')} variant="secondary" size="sm" disabled={loading !== null} onPress={pickDeck} />
+              {deck && <Button title={t('fit')} size="sm" loading={loading === 'slides'} disabled={loading !== null} onPress={fit} />}
+              {deck && (
+                <Button
+                  title={slides.length ? t('slidesOn') : t('present')}
+                  variant={slides.length ? 'ink' : 'primary'}
+                  size="sm"
+                  loading={loading === 'show'}
+                  disabled={loading !== null}
+                  onPress={slides.length ? () => setSlides([]) : present}
+                />
+              )}
             </View>
             {deck && <Text style={styles.file} numberOfLines={1}>{deck.name}</Text>}
+            {slides.length > 0 && (
+              <View style={styles.preview}>
+                <SlideFrame slides={slides} index={slideAt} onIndex={setSlideAt} width={wide ? 340 : 260} tilt={-1.5} keys={focused} />
+                <Small>{t('previewNote', { button: t('slidesOn') })}</Small>
+              </View>
+            )}
           </Card>
           {fitted && (
             <Card tone="accent">
-              <Label style={{ color: c.ink }}>Your pitch, slide by slide</Label>
+              <Label style={{ color: c.ink }}>{t('slideBySlide')}</Label>
+              <ScrollView style={styles.slides} contentContainerStyle={styles.slidesInner} nestedScrollEnabled>
               {fitted.slides.map((s) => (
                 <View key={s.n} style={styles.slide}>
                   <View style={[styles.slideNum, s.kind === 'demo' && { backgroundColor: c.ink }]}>
@@ -163,31 +217,50 @@ export default function OwnPitch() {
                   </View>
                 </View>
               ))}
+              </ScrollView>
               <View style={styles.refine}>
-                <Button title="Use this text" variant="ink" size="sm" onPress={() => setText(fitted.text)} />
-                <Button title="Restore mine" variant="secondary" size="sm" onPress={() => original && setText(original)} />
+                <Button title={t('useText')} variant="ink" size="sm" onPress={() => setText(fitted.text)} />
+                <Button title={t('restore')} variant="secondary" size="sm" onPress={() => original && setText(original)} />
               </View>
             </Card>
           )}
           {refined && (
-            <Card tone="accent">
-              <Label style={{ color: c.ink }}>After</Label>
-              <P>{refined.text}</P>
-              {refined.notes.map((n) => (
-                <Text key={n} style={styles.note}>
-                  • {n}
-                </Text>
-              ))}
-              <View style={styles.refine}>
-                <Button title="Use this text" variant="ink" size="sm" onPress={() => setText(refined.text)} />
-                <Button title="Restore mine" variant="secondary" size="sm" onPress={() => original && setText(original)} />
+            <Card tone="accent" style={styles.result}>
+              <View style={styles.resultHead}>
+                <Label style={styles.resultLabel}>{t('improved')}</Label>
+                <Button title={t('useText')} variant="ink" size="sm" onPress={() => setText(refined.text)} />
+                <Button title={t('restore')} variant="secondary" size="sm" onPress={() => original && setText(original)} />
               </View>
-              <H3 style={styles.was}>Before</H3>
-              <Text style={styles.note}>{original}</Text>
+              {/* длинный текст прокручивается внутри, а не растягивает страницу */}
+              <ScrollView style={styles.resultBox} nestedScrollEnabled>
+                <Text style={styles.resultText}>{refined.text}</Text>
+              </ScrollView>
+              {(refined.notes.length > 0 || original) && (
+                <Pressable accessibilityRole="button" onPress={() => setDetails(!details)} style={styles.toggle}>
+                  <Text style={styles.toggleText}>
+                    {details ? t('hideChanges') : t('showChanges')}
+                    {refined.notes.length ? ` (${refined.notes.length})` : ''} {details ? '▴' : '▾'}
+                  </Text>
+                </Pressable>
+              )}
+              {details && (
+                <View style={styles.details}>
+                  {refined.notes.map((n) => (
+                    <Text key={n} style={styles.small}>
+                      • {n}
+                    </Text>
+                  ))}
+                  {original ? (
+                    <>
+                      <Text style={styles.was}>{t('before')}</Text>
+                      <Text style={styles.small}>{original}</Text>
+                    </>
+                  ) : null}
+                </View>
+              )}
             </Card>
           )}
           <ErrorText>{error}</ErrorText>
-          <TicketButton title="On to preparation" stubTop="5 min" stubBottom="→" onPress={start} stretch={!wide} />
         </View>
       </Container>
     </Page>
@@ -208,8 +281,20 @@ const styles = StyleSheet.create({
   text: { minHeight: 220 },
   refine: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 4 },
   note: { fontFamily: font.body, fontSize: 15, lineHeight: 21, color: c.ink },
-  was: { fontSize: 17, marginTop: 8 },
+  result: { gap: 10, padding: 18 },
+  resultHead: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
+  resultLabel: { color: c.ink, flexGrow: 1 },
+  resultBox: { maxHeight: 200, backgroundColor: c.paper, borderRadius: 12, borderWidth: 2, borderColor: c.ink, paddingHorizontal: 12, paddingVertical: 10 },
+  resultText: { fontFamily: font.body, fontSize: 14, lineHeight: 20, color: c.ink },
+  toggle: { alignSelf: 'flex-start', minHeight: 32, justifyContent: 'center' },
+  toggleText: { fontFamily: font.semi, fontSize: 14, color: c.ink, textDecorationLine: 'underline' },
+  details: { gap: 6 },
+  small: { fontFamily: font.body, fontSize: 13, lineHeight: 18, color: c.ink },
+  was: { fontFamily: font.bold, fontSize: 14, color: c.ink, marginTop: 6 },
   file: { fontFamily: font.semi, fontSize: 14, color: c.graphite },
+  preview: { gap: 14, marginTop: 6, alignItems: 'flex-start' },
+  slides: { maxHeight: 260 },
+  slidesInner: { gap: 10 },
   slide: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },
   slideNum: { width: 30, height: 30, borderRadius: 15, backgroundColor: c.paper, alignItems: 'center', justifyContent: 'center', marginTop: 2, ...outline },
   slideNumText: { fontFamily: font.bold, fontSize: 14, color: c.ink },

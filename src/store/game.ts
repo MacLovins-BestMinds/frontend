@@ -3,7 +3,8 @@ import { create } from 'zustand';
 import { Platform } from 'react-native';
 
 import { mediaUrl, onUnauthorized, setAuthToken } from '@/api/client';
-import type { Case, Delivery, Difficulty, Finish, HistoryRound, Pace, PitchLimits, JuryAnswer, JuryQuestion, Mode, OwnPitchInput, Round, RoundReview, User } from '@/api/types';
+import type { Slide } from '@/slides/render';
+import type { BetterVersion, Case, Delivery, Difficulty, Finish, Flow, HistoryRound, Pace, PitchLimits, JuryAnswer, JuryQuestion, Mode, OwnPitchInput, Round, RoundReview, User } from '@/api/types';
 
 const SESSION_KEY = 'stage-zero-session';
 
@@ -44,6 +45,9 @@ type GameState = {
   /** Темп, которым игрок собирается говорить: спокойный, обычный или быстрый. */
   pace: Pace;
   setPace: (pace: Pace) => void;
+  /** Слайды своей презентации для показа на сцене; пусто — без слайдов. */
+  slides: Slide[];
+  setSlides: (slides: Slide[]) => void;
   /** Уровень сложности раунда. */
   difficulty: Difficulty;
   setDifficulty: (difficulty: Difficulty) => void;
@@ -63,6 +67,9 @@ type GameState = {
   result: Finish | null;
 
   juryQuestions: JuryQuestion[];
+  /** Ход мысли и «питч без запинок» из разбора истории; null — разбор спросит их у сервера по id раунда. */
+  flow: Flow | null;
+  betterVersion: BetterVersion | null;
   /** запись питча — чтобы в разборе проигрывать с нужного места */
   pitchAudioUri: string | null;
   /** видеозапись питча (только в браузере) и на сколько секунд она началась позже звука */
@@ -87,8 +94,11 @@ export const useGame = create<GameState>((set) => ({
   camera: 'user',
   pace: 'normal',
   difficulty: 'easy',
+  slides: [],
   pitchLimits: null,
   juryQuestions: [],
+  flow: null,
+  betterVersion: null,
   pitchAudioUri: null,
   pitchVideoUri: null,
   pitchVideoOffset: 0,
@@ -104,6 +114,7 @@ export const useGame = create<GameState>((set) => ({
   setCamera: (camera) => set({ camera }),
   setPace: (pace) => set({ pace }),
   setDifficulty: (difficulty) => set({ difficulty }),
+  setSlides: (slides) => set({ slides }),
   setPitchLimits: (pitchLimits) => set({ pitchLimits }),
   signIn: (user, token) => {
     setAuthToken(token);
@@ -113,7 +124,7 @@ export const useGame = create<GameState>((set) => ({
   signOut: () => {
     setAuthToken(null);
     saveSession(null);
-    set({ user: null, token: null, round: null, delivery: null, result: null, reviewOf: null, juryAnswers: [], juryQuestions: [], pitchAudioUri: null, pitchVideoUri: null });
+    set({ user: null, token: null, round: null, delivery: null, result: null, reviewOf: null, juryAnswers: [], juryQuestions: [], flow: null, betterVersion: null, pitchAudioUri: null, pitchVideoUri: null });
   },
   openReview: (review) =>
     set({
@@ -125,6 +136,8 @@ export const useGame = create<GameState>((set) => ({
       juryQuestions: review.jury_questions,
       juryAnswers: review.jury_answers,
       result: review.result,
+      flow: review.flow ?? null,
+      betterVersion: review.better_version ?? null,
       // звук хранится на сервере — старое выступление можно переслушать; видео остаётся только у только что сыгранного
       pitchAudioUri: review.audio_url ? mediaUrl(review.audio_url) : null,
       pitchVideoUri: null,
@@ -133,7 +146,7 @@ export const useGame = create<GameState>((set) => ({
   setPitchAudio: (pitchAudioUri) => set({ pitchAudioUri }),
   setPitchVideo: (pitchVideoUri, pitchVideoOffset) => set({ pitchVideoUri, pitchVideoOffset }),
   startTopic: (mode, topic) =>
-    set({ mode, topic, ownPitch: null, round: null, notes: '', delivery: null, juryAnswers: [], juryQuestions: [], pitchAudioUri: null, pitchVideoUri: null, result: null, reviewOf: null }),
+    set({ mode, topic, ownPitch: null, round: null, notes: '', delivery: null, juryAnswers: [], juryQuestions: [], flow: null, betterVersion: null, pitchAudioUri: null, pitchVideoUri: null, result: null, reviewOf: null, slides: [] }),
   startOwnPitch: (own) =>
     set({
       mode: 'own',
@@ -149,6 +162,8 @@ export const useGame = create<GameState>((set) => ({
       delivery: null,
       juryAnswers: [],
       juryQuestions: [],
+      flow: null,
+      betterVersion: null,
       pitchAudioUri: null,
       pitchVideoUri: null,
       result: null,
