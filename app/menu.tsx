@@ -159,15 +159,17 @@ export default function Menu() {
           </View>
           {rankCard}
         </View>
+        {/* свой питч невысокий: на компьютере — сразу под приветствием, на телефоне — под колесом */}
+        {wide ? own : null}
         <View style={styles.levelBlock}>
           <Label>{tc('difficulty')}</Label>
           <LevelPicker value={difficulty} onChange={setDifficulty} compact={!wide} />
         </View>
         <View style={wide ? styles.cardsWide : styles.cardsNarrow}>
           {training}
+          {wide ? null : own}
           {dailyCard}
         </View>
-        {own}
       </Container>
     </Page>
   );
