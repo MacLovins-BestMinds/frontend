@@ -1,10 +1,12 @@
-import { forwardRef, memo, useImperativeHandle, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { forwardRef, memo, useEffect, useImperativeHandle, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { Platform, Pressable, StyleSheet, Text, View, type TextStyle } from 'react-native';
+import { useReducedMotion } from 'react-native-reanimated';
 
 import type { Delivery, TimelineEvent } from '@/api/types';
 import { c, font, formatTime } from '@/design/theme';
 import { translate, useT } from '@/i18n';
 
+import { charProgress, createSmoothClock, mix, type SmoothClock } from './karaoke';
 import { PitchPlayer, type PitchPlayerHandle, type PlayerMark } from './PitchPlayer';
 import { Card, H3, Small } from './primitives';
 
@@ -77,14 +79,71 @@ function markTranscript(transcript: string, events: TimelineEvent[]): Piece[] {
   return pieces;
 }
 
-/** Одно слово. Перерисовывается, только когда становится текущим или перестаёт им быть. */
-const Word = memo(function Word({ index, text, active, onPress }: { index: number; text: string; active: boolean; onPress: (index: number) => void }) {
+// ещё не сказанное: приглушённый ink на бумаге; сказанное — обычный ink
+const MUTED = '#A8A397';
+
+type WordProps = {
+  index: number;
+  text: string;
+  /** Когда слово звучит (с, с) и когда начинается следующее — до него слово считается текущим. */
+  t: number;
+  tEnd: number;
+  nextT: number;
+  /** Начало каждой буквы (с); нет — заливка идёт равномерно по длине слова. */
+  chars?: number[] | null;
+  /** Слово внутри отметки ошибки: у неё свой фон, подложку текущего слова не рисуем. */
+  marked: boolean;
+  clock: SmoothClock;
+  /** Система просит меньше движения: текущее слово просто выделено, без заливки по буквам. */
+  still: boolean;
+  onPress: (index: number) => void;
+};
+
+/**
+ * Слово транскрипта как караоке: впереди — приглушено, сказанное — чёрное, текущее заливается по буквам.
+ * Перерисовывается, только когда меняется его состояние; каждый кадр — только текущее слово (ActiveWord).
+ */
+const Word = memo(function Word(props: WordProps) {
+  const { index, text, t, nextT, clock, still, onPress } = props;
+  const state = useSyncExternalStore(clock.subscribe, () => {
+    if (!clock.engaged()) return 'idle';
+    const time = clock.get();
+    return time < t ? 'future' : time < nextT ? 'active' : 'past';
+  });
+  if (state === 'active') {
+    return still ? (
+      <Text onPress={() => onPress(index)} style={styles.nowStill}>
+        {text}
+      </Text>
+    ) : (
+      <ActiveWord {...props} />
+    );
+  }
   return (
-    <Text onPress={() => onPress(index)} style={active ? styles.now : undefined}>
+    <Text onPress={() => onPress(index)} style={[fade, state === 'future' && styles.future]}>
       {text}
     </Text>
   );
 });
+
+/** Текущее слово: каждая буква плавно переходит из приглушённой в чёрную в свой момент записи. */
+function ActiveWord({ index, text, t, tEnd, chars, marked, clock, onPress }: WordProps) {
+  const time = useSyncExternalStore(clock.subscribe, clock.get);
+  const letters = Array.from(text); // по символам, как считает бэкенд
+  const progress = charProgress(time, letters.length, t, tEnd, chars);
+  return (
+    <Text onPress={() => onPress(index)} style={[fade, !marked && styles.now]}>
+      {letters.map((ch, i) => (
+        <Text key={i} style={{ color: mix(MUTED, c.ink, progress[i]) }}>
+          {ch}
+        </Text>
+      ))}
+    </Text>
+  );
+}
+
+// в браузере смена «впереди → сказано» и подложка текущего слова проявляются плавно
+const fade = (Platform.OS === 'web' ? { transitionProperty: 'color, background-color', transitionDuration: '220ms' } : {}) as TextStyle;
 
 export type TranscriptHandle = { playFrom: (seconds: number) => void; pause: () => void };
 
@@ -132,30 +191,26 @@ export const Transcript = forwardRef<TranscriptHandle, Props>(function Transcrip
     [events, extraMarks, t],
   );
 
+  // плавные часы подсветки: их кормит тот плеер, что ведёт время (видео или свой)
+  const smooth = useMemo(() => createSmoothClock(), []);
+  useEffect(() => () => smooth.dispose(), [smooth]);
+  const still = useReducedMotion();
+
   const follow = useRef(media);
   follow.current = media;
   const playFrom = (seconds: number) => (follow.current ? follow.current.playFrom(seconds) : player.current?.playFrom(seconds));
   const clock = media ?? now;
   useImperativeHandle(ref, () => ({ playFrom, pause: () => player.current?.pause() }));
 
-  // слово, которое звучит сейчас: последнее, начавшееся к этому моменту
-  let active = -1;
-  if ((media || audioUri) && words.length && (clock.playing || clock.time > 0)) {
-    let lo = 0;
-    let hi = words.length - 1;
-    while (lo <= hi) {
-      const mid = (lo + hi) >> 1;
-      if (words[mid].t <= clock.time + 0.05) {
-        active = mid;
-        lo = mid + 1;
-      } else hi = mid - 1;
-    }
-  }
+  const hasPlayer = !!(media || audioUri);
+  useEffect(() => {
+    if (hasPlayer) smooth.set(clock.time, clock.playing);
+  }, [hasPlayer, clock.time, clock.playing, smooth]);
   // playFrom начинает на секунду раньше
   const jump = useMemo(() => (index: number) => (follow.current ? follow.current.playFrom(words[index].t + 1) : player.current?.playFrom(words[index].t + 1)), [words]);
 
   let cursor = 0; // слова идут по порядку — по ним проходим один раз
-  const range = (from: number, to: number): ReactNode[] => {
+  const range = (from: number, to: number, marked = false): ReactNode[] => {
     const nodes: ReactNode[] = [];
     let at = from;
     while (cursor < words.length && words[cursor].start < to) {
@@ -163,7 +218,21 @@ export const Transcript = forwardRef<TranscriptHandle, Props>(function Transcrip
       if (w.start >= at) {
         if (w.start > at) nodes.push(transcript.slice(at, w.start));
         const end = Math.min(w.end, to);
-        nodes.push(<Word key={cursor} index={cursor} text={transcript.slice(w.start, end)} active={cursor === active} onPress={jump} />);
+        nodes.push(
+          <Word
+            key={cursor}
+            index={cursor}
+            text={transcript.slice(w.start, end)}
+            t={w.t}
+            tEnd={w.t_end}
+            nextT={words[cursor + 1]?.t ?? Infinity}
+            chars={end === w.end ? w.c : null}
+            marked={marked}
+            clock={smooth}
+            still={still}
+            onPress={jump}
+          />,
+        );
         at = end;
       }
       cursor += 1;
@@ -227,7 +296,7 @@ export const Transcript = forwardRef<TranscriptHandle, Props>(function Transcrip
               onPress={words.length ? undefined : () => playFrom(p.event!.t)}
               style={[styles.marked, { backgroundColor: MARK[p.event.type]?.color ?? c.markPause }]}
               accessibilityLabel={p.event.text}>
-              {range(p.from, p.to)}
+              {range(p.from, p.to, true)}
             </Text>
           ) : (
             <Text key={i}>{range(p.from, p.to)}</Text>
@@ -261,8 +330,10 @@ const styles = StyleSheet.create({
   text: { fontFamily: font.body, fontSize: 18, lineHeight: 32, color: c.ink },
   marked: { fontFamily: font.semi, borderRadius: 6 },
   badge: { fontFamily: font.bold, fontSize: 13, letterSpacing: 0.2 },
-  // слово, которое звучит сейчас
-  now: { backgroundColor: c.ink, color: c.cream, borderRadius: 5 },
+  // караоке: ещё не сказанное, подложка текущего слова и текущее слово без анимации (меньше движения)
+  future: { color: MUTED },
+  now: { backgroundColor: 'rgba(247,166,30,0.34)', borderRadius: 6 },
+  nowStill: { backgroundColor: c.ink, color: c.cream, borderRadius: 5 },
   events: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   event: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 10, borderWidth: 2, borderColor: c.ink, paddingHorizontal: 10, minHeight: 40, maxWidth: '100%' },
   eventTime: { fontFamily: font.bold, fontSize: 14, color: c.ink, fontVariant: ['tabular-nums'] },

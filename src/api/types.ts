@@ -46,7 +46,8 @@ export type TimelineEvent = {
 };
 
 /** Слово расшифровки: где стоит в transcript (символы) и когда звучит в записи (секунды). */
-export type WordMark = { start: number; end: number; t: number; t_end: number };
+/** Слово: место в transcript (символы), время звучания (с) и начало каждой буквы (с) — для подсветки по буквам. */
+export type WordMark = { start: number; end: number; t: number; t_end: number; c?: number[] | null };
 
 export type Delivery = {
   transcript: string;
