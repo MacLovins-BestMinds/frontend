@@ -86,15 +86,8 @@ export default function OwnPitch() {
     router.push('/prep');
   };
 
-  const cta = (
-    <>
-      <ErrorText>{error}</ErrorText>
-      <TicketButton title="On to preparation" stubTop="5 min" stubBottom="→" onPress={start} stretch={!wide} />
-    </>
-  );
-
   return (
-    <Page sticky>
+    <Page sticky footer={<TicketButton title="On to preparation" stubTop="5 min" stubBottom="→" onPress={start} stretch={!wide} />}>
       <AppHeader glass back={() => goBack()} />
       <Container style={[styles.main, wide && styles.mainWide]}>
         <View style={[styles.col, wide && styles.colWide]}>
@@ -131,8 +124,6 @@ export default function OwnPitch() {
               })}
             </View>
           </Card>
-          {/* на широком экране кнопка слева, под аудиторией; на узком — в конце, после текста */}
-          {wide && cta}
         </View>
         <View style={[styles.col, wide && styles.colWide]}>
           <Card flat>
@@ -218,7 +209,7 @@ export default function OwnPitch() {
               )}
             </Card>
           )}
-          {!wide && cta}
+          <ErrorText>{error}</ErrorText>
         </View>
       </Container>
     </Page>

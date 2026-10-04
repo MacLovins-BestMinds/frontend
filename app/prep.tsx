@@ -149,7 +149,13 @@ export default function Prep() {
   const hot = warning || over;
 
   return (
-    <Page sticky>
+    <Page
+      sticky
+      footer={
+        round ? (
+          <TicketButton title="Ready — go on stage" stubTop="pitch" stubBottom={formatRange(limits.min, limits.max)} onPress={() => router.replace('/stage')} stretch={!wide} />
+        ) : null
+      }>
       <AppHeader glass back={() => goBack()}>
         <GlassButton icon="home" label="Menu" onPress={goMenu} />
       </AppHeader>
@@ -259,9 +265,6 @@ export default function Prep() {
             </View>
           </View>
           <ErrorText>{error}</ErrorText>
-          {round ? (
-            <TicketButton title="Ready — go on stage" stubTop="pitch" stubBottom={formatRange(limits.min, limits.max)} onPress={() => router.replace('/stage')} stretch={!wide} />
-          ) : null}
         </View>
         <View style={[styles.right, wide && styles.rightWide]}>
           <Brief topic={topic} minSec={limits.min} maxSec={limits.max} />
