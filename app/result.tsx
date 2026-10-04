@@ -77,7 +77,7 @@ export default function Result() {
                 videoOffset={pitchVideoOffset}
                 duration={duration}
                 wide={wide}
-                noRecording={reviewOf ? 'Recordings are not stored, so this round has only the transcript and the marks.' : 'The recording of this pitch is not available — markers only show the time.'}
+                noRecording={reviewOf ? 'This round was played before recordings were saved, so it has only the transcript and the marks.' : 'The recording of this pitch is not available — markers only show the time.'}
               />
             </View>
 

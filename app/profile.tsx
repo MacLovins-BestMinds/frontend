@@ -273,7 +273,7 @@ export default function Profile() {
 
             <Card flat style={styles.card}>
               <H3>All your pitches</H3>
-              <Muted>Tap a round to read its review again. Recordings are not stored — only the transcript and the marks.</Muted>
+              <Muted>Tap a round to open its review and listen to your pitch again.</Muted>
               {history.map((r) => (
                 <Pressable key={r.id} accessibilityRole="button" accessibilityLabel={`Open the review of ${r.title}`} onPress={() => open(r)} style={({ pressed }) => [styles.round, pressed && { backgroundColor: c.cream }]}>
                   <DashedLine color={c.onInkMuted} style={styles.roundRule} />

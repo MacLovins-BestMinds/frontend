@@ -1,54 +1,71 @@
-import {
-  RecordingPresets,
-  requestRecordingPermissionsAsync,
-  setAudioModeAsync,
-  useAudioRecorder,
-  useAudioRecorderState,
-} from 'expo-audio';
 import { useCallback, useRef } from 'react';
-import { Platform } from 'react-native';
 
-const VOICE_DB = -38; // громче — считаем, что звучит голос
+import { acquireMic, releaseMic } from './mic.web';
+
+// Safari пишет mp4/AAC, Chrome и Firefox — webm/opus
+const AUDIO_TYPES = ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus'];
 
 /**
- * Запись в файл m4a/AAC через expo-audio.
- * Живой поток PCM в WS /api/ai/live (@siteed/audio-studio) сюда ещё не подключён.
+ * Браузер: запись звука для разбора через MediaRecorder на том же потоке микрофона, что и живой анализ
+ * (live.web.ts) и звук видео (capture.web.ts). Один захват микрофона на всё: в мобильном Safari второй
+ * getUserMedia мог молчать или стартовать позже, и звук с видео расходились на десятки секунд.
+ * Уровень голоса считает живой поток, поэтому speaking здесь всегда undefined.
  */
 export function useRecorder() {
-  const recorder = useAudioRecorder({ ...RecordingPresets.HIGH_QUALITY, isMeteringEnabled: true });
-  const { metering, isRecording } = useAudioRecorderState(recorder, 250);
-  const active = useRef(false);
-  /** Звучит ли голос, по уровню записи. undefined — уровня нет; в браузере его даёт живой поток (live.web.ts). */
-  const speaking = Platform.OS !== 'web' && isRecording && typeof metering === 'number' ? metering > VOICE_DB : undefined;
+  const recorder = useRef<MediaRecorder | null>(null);
+  const chunks = useRef<Blob[]>([]);
+  const holdsMic = useRef(false);
 
-  /** false — нет разрешения или запись не стартовала. */
+  const letGo = () => {
+    if (holdsMic.current) releaseMic();
+    holdsMic.current = false;
+  };
+
+  /** false — нет разрешения или запись не стартовала. Обещание выполняется, когда запись реально пошла. */
   const start = useCallback(async (): Promise<boolean> => {
+    if (recorder.current) return true;
     try {
-      const { granted } = await requestRecordingPermissionsAsync();
-      if (!granted) return false;
-      await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
-      await recorder.prepareToRecordAsync();
-      recorder.record();
-      active.current = true;
+      if (typeof MediaRecorder === 'undefined') throw new Error('MediaRecorder is not available');
+      const stream = await acquireMic();
+      holdsMic.current = true;
+      const type = AUDIO_TYPES.find((t) => MediaRecorder.isTypeSupported(t));
+      const rec = new MediaRecorder(new MediaStream(stream.getAudioTracks()), type ? { mimeType: type } : undefined);
+      chunks.current = [];
+      rec.ondataavailable = (e) => e.data.size > 0 && chunks.current.push(e.data);
+      await new Promise<void>((resolve, reject) => {
+        rec.onstart = () => resolve();
+        rec.onerror = (e) => reject(e);
+        rec.start(1000);
+      });
+      recorder.current = rec;
       return true;
     } catch (e) {
       console.warn('Recording did not start', e);
+      letGo();
       return false;
     }
-  }, [recorder]);
+  }, []);
 
-  /** Останавливает запись и возвращает uri файла. */
+  /** Останавливает запись и возвращает её адрес (blob:), null — записи нет. */
   const stop = useCallback(async (): Promise<string | null> => {
-    if (!active.current) return null;
-    active.current = false;
-    try {
-      await recorder.stop();
-      return recorder.uri;
-    } catch (e) {
-      console.warn('Recording did not stop', e);
-      return null;
-    }
-  }, [recorder]);
+    const rec = recorder.current;
+    recorder.current = null;
+    if (!rec) return null;
+    const uri = await new Promise<string | null>((resolve) => {
+      if (rec.state === 'inactive') return resolve(null);
+      rec.onstop = () => {
+        const blob = new Blob(chunks.current, { type: rec.mimeType || 'audio/webm' });
+        resolve(blob.size > 0 ? URL.createObjectURL(blob) : null);
+      };
+      try {
+        rec.stop();
+      } catch {
+        resolve(null);
+      }
+    });
+    letGo();
+    return uri;
+  }, []);
 
-  return { start, stop, speaking };
+  return { start, stop, speaking: undefined as boolean | undefined };
 }
