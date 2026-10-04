@@ -11,7 +11,8 @@ import { useLayout } from '@/hooks/useLayout';
 import { JURORS, JuryTable } from '@/scene/AudienceScene';
 import { useGame } from '@/store/game';
 import { AppHeader } from '@/ui/AppHeader';
-import { Bubble, Valance } from '@/ui/decor';
+import { Bubble, DashedLine, Valance } from '@/ui/decor';
+import { Pending } from '@/ui/Pending';
 import { Button, Card, Container, ErrorText, H1, H3, Label, Muted, P, Page, Small } from '@/ui/primitives';
 
 const ANSWER_SEC = 30;
@@ -83,6 +84,29 @@ export default function Jury() {
     setLeft(ANSWER_SEC);
     setPhase('answering');
     await recorder.start();
+  };
+
+  /** Пропустить вопрос: 0 баллов, сразу комментарий и «Дальше». Запись ответа, если шла, выбрасываем. */
+  const skip = async () => {
+    if (!round || !question || sending.current) return;
+    sending.current = true;
+    player.current?.stop();
+    if (phase === 'answering') await recorder.stop();
+    answerUri.current = null;
+    setPhase('sending');
+    setError('');
+    try {
+      const answer = await api.jurySkip(round.round_id, question.id);
+      addJuryAnswer(answer);
+      setScores((s) => ({ ...s, [question.juror]: answer.score }));
+      setComment({ score: answer.score, text: answer.comment });
+      setPhase('comment');
+    } catch (e) {
+      setError(`Could not skip the question: ${(e as Error).message}`);
+      setPhase('question');
+    } finally {
+      sending.current = false;
+    }
   };
 
   const sendAnswer = async () => {
@@ -159,7 +183,6 @@ export default function Jury() {
 
   const actions = (
     <>
-      {phase === 'loading' && !error && <Muted>The jury is conferring…</Muted>}
       {phase === 'loading' && error !== '' && <Button title="Try again" variant="secondary" onPress={load} />}
       {phase === 'answering' && (
         <View style={styles.countdown}>
@@ -178,6 +201,9 @@ export default function Jury() {
         <Button title="Play the question" variant="secondary" onPress={() => playQuestion(mediaUrl(question.audio_url))} />
       )}
       {phase === 'question' && <Button title="Answer (up to 30 seconds)" onPress={startAnswer} />}
+      {(phase === 'question' || phase === 'answering') && (
+        <Button title="Skip this question (0 points)" variant="secondary" size="sm" onPress={skip} style={styles.skip} />
+      )}
       {(phase === 'answering' || phase === 'sending') && <Button title="Done answering" loading={phase === 'sending'} onPress={sendAnswer} />}
       {(phase === 'comment' || phase === 'finishing') && (
         <Button
@@ -198,7 +224,8 @@ export default function Jury() {
         const score = scores[id];
         const now = question?.juror === id && score === undefined;
         return (
-          <View key={id} style={[styles.sheetRow, i > 0 && styles.sheetRule]}>
+          <View key={id} style={styles.sheetRow}>
+            {i > 0 ? <DashedLine color={c.onInkMuted} style={styles.sheetRule} /> : null}
             <View style={[styles.sheetDot, now && { backgroundColor: c.orange }, score !== undefined && { backgroundColor: c.ink }]}>
               <Text style={[styles.sheetDotText, score !== undefined && { color: c.onInk }]}>{asked >= 0 ? asked + 1 : i + 1}</Text>
             </View>
@@ -222,8 +249,8 @@ export default function Jury() {
   );
 
   return (
-    <Page>
-      <AppHeader />
+    <Page sticky>
+      <AppHeader glass />
       <Container style={styles.main}>
         <View style={styles.head}>
           <H1 style={!wide && styles.titleNarrow}>Jury questions</H1>
@@ -232,25 +259,38 @@ export default function Jury() {
         <View style={[styles.columns, wide && styles.columnsWide]}>
           <View style={[styles.left, wide && styles.leftWide]}>
             {/* ложа жюри: ламбрекен, стена с панелью и стол во всю ширину */}
-            <View style={styles.booth} onLayout={(e) => setBoothWidth(e.nativeEvent.layout.width)}>
-              <View style={styles.wainscot} />
-              {boothWidth > 0 && <Valance width={boothWidth} background="transparent" />}
-              <View style={[styles.boothTable, !wide && styles.boothTableNarrow]}>
-                <JuryTable speaking={speaking} />
-                {phase === 'question' && speakerAt >= 0 && (
-                  <Bubble text="question!" dark tilt={-6} style={{ top: wide ? -6 : -24, left: `${8 + speakerAt * 31}%` }} />
-                )}
-              </View>
-              <View style={styles.names}>
-                {JURORS.map((id) => (
-                  <Text key={id} style={[styles.name, speaking === id && styles.nameOn]}>
-                    {JUROR_NAME[id]}
-                  </Text>
-                ))}
+            <View style={styles.booth}>
+              <View style={styles.boothClip} onLayout={(e) => setBoothWidth(e.nativeEvent.layout.width)}>
+                <View style={styles.wainscot} />
+                {boothWidth > 0 && <Valance width={boothWidth} background="transparent" />}
+                <View style={[styles.boothTable, !wide && styles.boothTableNarrow]}>
+                  <JuryTable speaking={speaking} />
+                  {phase === 'question' && speakerAt >= 0 && (
+                    <Bubble text="question!" dark tilt={-6} style={{ top: wide ? -6 : -24, left: `${8 + speakerAt * 31}%` }} />
+                  )}
+                </View>
+                <View style={styles.names}>
+                  {JURORS.map((id) => (
+                    <Text key={id} style={[styles.name, speaking === id && styles.nameOn]}>
+                      {JUROR_NAME[id]}
+                    </Text>
+                  ))}
+                </View>
               </View>
             </View>
 
-            {question && (
+            {phase === 'loading' && !error && (
+              <Pending
+                title="The jury is conferring"
+                steps={['Your pitch is scored', 'The jury reads your pitch and records three questions', 'You answer — 30 seconds each']}
+                current={1}
+                note="Usually 10–20 seconds. The first question plays as soon as it is ready."
+              />
+            )}
+            {phase === 'finishing' && (
+              <Pending title="Adding up your result" steps={['Your answers are scored', 'Final score and rank']} current={1} />
+            )}
+            {question && phase !== 'finishing' && (
               <Card style={styles.questionCard}>
                 <Label>
                   Question {index + 1} of {questions.length} · {JUROR_NAME[question.juror] ?? question.juror}
@@ -284,7 +324,8 @@ const styles = StyleSheet.create({
   leftWide: { flex: 1.7 },
   side: { gap: 20 },
   sideWide: { flex: 1 },
-  booth: { backgroundColor: c.paper, borderRadius: 24, overflow: 'hidden', ...outline, ...shadow(6) },
+  booth: { backgroundColor: c.paper, borderRadius: 24, ...outline, ...shadow(6) },
+  boothClip: { overflow: 'hidden', borderRadius: 22 },
   wainscot: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '46%', backgroundColor: '#F1E9C6', borderTopWidth: 2.5, borderTopColor: c.ink },
   boothTable: { marginHorizontal: 18, marginTop: 14 },
   boothTableNarrow: { marginHorizontal: 10, marginTop: 26 },
@@ -296,7 +337,7 @@ const styles = StyleSheet.create({
   questionWide: { fontSize: 26, lineHeight: 34 },
   sheet: { gap: 0, paddingVertical: 18 },
   sheetRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10 },
-  sheetRule: { borderTopWidth: 2, borderTopColor: c.onInkMuted, borderStyle: 'dashed' },
+  sheetRule: { position: 'absolute', top: 0, left: 0, right: 0 },
   sheetDot: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: c.paper, borderWidth: 2, borderColor: c.ink },
   sheetDotText: { fontFamily: font.bold, fontSize: 14, color: c.ink },
   sheetName: { fontFamily: font.bold, fontSize: 17, color: c.ink, flex: 1 },
@@ -307,6 +348,7 @@ const styles = StyleSheet.create({
   countdown: { alignSelf: 'center', alignItems: 'center', backgroundColor: c.ink, borderRadius: 20, paddingHorizontal: 28, paddingVertical: 10, transform: [{ rotate: '-2deg' }] },
   countdownValue: { fontFamily: font.display, fontSize: 64, lineHeight: 72, color: c.orange, fontVariant: ['tabular-nums'] },
   countdownLabel: { fontFamily: font.bold, fontSize: 12, letterSpacing: 1, textTransform: 'uppercase', color: c.onInkMuted },
+  skip: { alignSelf: 'center' },
   verdict: { flexDirection: 'row', alignItems: 'center', gap: 16 },
   verdictScore: { fontFamily: font.display, fontSize: 40, lineHeight: 46, color: c.ink },
 });

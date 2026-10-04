@@ -1,23 +1,37 @@
 import { router } from 'expo-router';
 import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { c, font, outline } from '@/design/theme';
 import { useLayout } from '@/hooks/useLayout';
 
 import { Logo } from './decor';
+import { GlassButton, GlassSurface } from './Glass';
 import { Container } from './primitives';
 
-/** Шапка: логотип слева, справа — что передали (ник, «В меню», «Войти»). */
-export function AppHeader({ children, home = '/menu' }: { children?: ReactNode; home?: '/' | '/menu' }) {
+/**
+ * Шапка: «назад» (если передан back), логотип, справа — что передали (ник, «В меню», «Войти»).
+ * glass — стеклянная полоса: на длинных страницах шапка прилипает к верху (Page sticky), а текст уезжает под неё.
+ */
+export function AppHeader({ children, home = '/menu', back, glass = false }: { children?: ReactNode; home?: '/' | '/menu'; back?: () => void; glass?: boolean }) {
   const { wide } = useLayout();
-  return (
-    <Container style={[styles.header, { paddingTop: wide ? 24 : 16 }]}>
-      <Pressable accessibilityRole="link" accessibilityLabel="Stage Zero" onPress={() => router.replace(home)} style={styles.logo}>
+  const insets = useSafeAreaInsets();
+  // стеклянная полоса тянется под строку статуса: её отступ сверху — внутри стекла
+  const row = (
+    <Container style={[styles.header, { paddingTop: glass ? insets.top + 10 : wide ? 24 : 16, paddingBottom: glass ? 10 : 12 }]}>
+      {back ? <GlassButton icon="back" title={wide ? 'Back' : undefined} label="Back" onPress={back} /> : null}
+      <Pressable accessibilityRole="link" accessibilityLabel="Stager" onPress={() => router.dismissTo(home)} style={styles.logo}>
         <Logo size={wide ? 22 : 18} />
       </Pressable>
-      {children}
+      <View style={styles.actions}>{children}</View>
     </Container>
+  );
+  if (!glass) return row;
+  return (
+    <GlassSurface round={0} style={styles.bar}>
+      {row}
+    </GlassSurface>
   );
 }
 
@@ -36,8 +50,10 @@ export function NickChip({ nick }: { nick: string }) {
 }
 
 const styles = StyleSheet.create({
-  header: { flexDirection: 'row', alignItems: 'center', gap: 16, paddingBottom: 12 },
-  logo: { flexGrow: 1, minHeight: 44, justifyContent: 'center' },
+  bar: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(42,36,28,0.14)' },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  logo: { flexGrow: 1, flexShrink: 1, minHeight: 44, justifyContent: 'center' },
+  actions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   nick: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: c.paper, borderRadius: 999, paddingLeft: 6, paddingRight: 16, paddingVertical: 6, maxWidth: 220, ...outline },
   avatar: { width: 34, height: 34, borderRadius: 17, backgroundColor: c.ink, alignItems: 'center', justifyContent: 'center' },
   avatarText: { fontFamily: font.bold, fontSize: 15, color: c.onInk },

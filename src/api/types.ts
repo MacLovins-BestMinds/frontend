@@ -185,10 +185,15 @@ export type RoundReview = {
   delivery: Delivery | null;
   jury_questions: JuryQuestion[];
   jury_answers: (JuryAnswer & { question_id: string })[];
+  /** Звук раунда на сервере (/static/recordings/...); null — записи нет (старые раунды). Видео не хранится. */
+  audio_url?: string | null;
 };
 
 /** Темп, которым игрок хочет говорить: от него зависит, что зал считает «слишком медленно». */
 export type Pace = 'slow' | 'normal' | 'fast';
+
+/** Сколько говорить: от min до max секунд. */
+export type PitchLimits = { min: number; max: number };
 
 /** Регистрация по почте: дальше нужен код из письма. dev_code приходит, только если почта на сервере не настроена. */
 export type Signup = {

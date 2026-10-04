@@ -6,18 +6,20 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api } from '@/api/client';
 import type { Difficulty } from '@/api/types';
 import { startLive, type LiveEvent } from '@/audio/live';
+import { prepareMic } from '@/audio/micAccess';
 import { useRecorder } from '@/audio/useRecorder';
 import { env } from '@/config/env';
-import { c, font, formatTime, outline, shadow } from '@/design/theme';
+import { c, font, formatRange, formatTime, outline, shadow } from '@/design/theme';
 import { useLayout } from '@/hooks/useLayout';
 import { useStayAwake } from '@/hooks/useStayAwake';
 import { AudienceScene } from '@/scene/AudienceScene';
 import { CameraFrame } from '@/scene/CameraFrame';
 import { startCapture, type Capture, type CaptureResult } from '@/video/capture';
-import { useGame } from '@/store/game';
+import { pitchLimitsFor, useGame } from '@/store/game';
 import { Bulbs, EyeIcon } from '@/ui/decor';
+import { Pending } from '@/ui/Pending';
 import { SlideFrame } from '@/ui/SlideFrame';
-import { Button } from '@/ui/primitives';
+import { Button, ErrorText } from '@/ui/primitives';
 
 // Шкала внимания — это то, что зал думает о последних секундах выступления. Она складывается из трёх вещей:
 // 1) звучит ли голос (сам по себе голос поднимает шкалу только до 60);
@@ -37,7 +39,6 @@ const EASE = 0.3; // шкала идёт к цели плавно, а не пр�
 const STEP_SEC = 0.5;
 const HINT_MS = 3500;
 const HINT_MIN_MS = 1800;
-const MOCK_MIN_SEC = 5;
 // Без микрофона на моках речь имитируется: 18 секунд «говорим», 9 секунд «молчим».
 const MOCK_CYCLE_SEC = 27;
 const MOCK_TALK_SEC = 18;
@@ -82,17 +83,27 @@ function goal(voice: number, content: number | null, slips: number, silent: numb
 
 export default function Stage() {
   useStayAwake();
-  const { user, topic, round, notes, camera, pace, difficulty, slides, setCamera, setDelivery, setPitchAudio, setPitchVideo } = useGame();
+  const { user, topic, round, notes, camera, pace, difficulty, pitchLimits, slides, setCamera, setDelivery, setPitchAudio, setPitchVideo } = useGame();
   const [slideAt, setSlideAt] = useState(0);
-  const { width, height, wide } = useLayout();
+  const { width, height } = useLayout();
   const insets = useSafeAreaInsets();
   const recorder = useRecorder();
   const [elapsed, setElapsed] = useState(0);
   const [attention, setAttention] = useState(START_ATTENTION);
   const [micOk, setMicOk] = useState(true);
   const [sending, setSending] = useState(false);
+  // до кнопки Start ничего не идёт: человек разрешает микрофон и камеру и понимает, что сейчас выступать
+  const [started, setStarted] = useState(false);
+  const startedRef = useRef(false);
+  const [mic, setMic] = useState<'asking' | 'ok' | 'denied'>('asking');
+  const [cameraOn, setCameraOn] = useState(false);
+  // камера включилась до Start: съёмку начнём по нажатию
+  const startCamera = useRef<(() => void) | null>(null);
+  // что происходит после «Закончить»: 0 — сохраняем запись, 1 — сервер слушает и оценивает
+  const [step, setStep] = useState(0);
   const [error, setError] = useState('');
   const audioUri = useRef<string | null>(null);
+  const audioStart = useRef(0); // секунда раунда, с которой реально пишется звук
   const finished = useRef(false);
   const stopLive = useRef<() => void>(() => {});
   const startedAt = useRef(Date.now());
@@ -159,14 +170,42 @@ export default function Stage() {
     if (e.type === 'pace') say(e.verdict === 'fast' ? 'Too fast — slow down' : dragging ? 'You chose a fast pace — speed up' : 'Too slow — pick up the pace', 'bad');
   };
 
-  const minSec = env.useMocks ? MOCK_MIN_SEC : (round?.pitch_min_sec ?? 60);
-  const maxSec = round?.pitch_max_sec ?? 180;
+  const limits = pitchLimitsFor(round, pitchLimits);
+  const maxSec = limits.max;
+
+  // разрешение на микрофон спрашиваем сразу, ещё до Start
+  useEffect(() => {
+    let release = () => {};
+    let cancelled = false;
+    prepareMic().then((r) => {
+      release = r.release;
+      if (cancelled) return release();
+      setMic(r.ok ? 'ok' : 'denied');
+    });
+    return () => {
+      cancelled = true;
+      release();
+    };
+  }, []);
+
+  const begin = () => {
+    if (startedRef.current) return;
+    startedRef.current = true;
+    setStarted(true);
+  };
 
   useEffect(() => {
-    recorder.start().then(setMicOk);
+    if (!started) return;
+    recorder.start().then((ok) => {
+      // звук начинает писаться не в ноль раунда, а когда рекордер реально запустился (разрешение, запуск);
+      // от этой секунды и считаем место видео относительно звука
+      audioStart.current = ok ? now() : 0;
+      setMicOk(ok);
+    });
     startedAt.current = Date.now();
     const id = setInterval(() => setElapsed(now()), 250);
     // живой поток: микрофон говорит залу, звучит ли голос, а бэкенд присылает оговорки и оценку содержания
+    startCamera.current?.();
     stopLive.current = startLive(env.useMocks ? null : (round?.round_id ?? null), { onVoice, onEvent }, pace);
     return () => {
       clearInterval(id);
@@ -175,9 +214,9 @@ export default function Stage() {
       capture.current?.stop();
       recorder.stop();
     };
-    // запись и поток стартуют один раз при входе на сцену
+    // запись и поток стартуют один раз — по кнопке Start
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [started]);
 
   // в приложении уровень голоса даёт сама запись
   useEffect(() => {
@@ -238,6 +277,7 @@ export default function Stage() {
     if (!round || finished.current) return;
     finished.current = true;
     setSending(true);
+    setStep(0);
     setError('');
     stopLive.current();
     try {
@@ -247,20 +287,23 @@ export default function Stage() {
       if (capture.current) {
         shot.current = await capture.current.stop();
         capture.current = null;
-        setPitchVideo(shot.current.videoUri, shot.current.videoOffset);
+        // смещение видео — относительно начала звукозаписи: в разборе время ведёт звук
+        setPitchVideo(shot.current.videoUri, shot.current.videoOffset - audioStart.current);
       }
-      setDelivery(await api.delivery(round.round_id, audioUri.current, shot.current?.gaze ?? [], notes, pace));
+      setStep(1);
+      setDelivery(await api.delivery(round.round_id, audioUri.current, shot.current?.gaze ?? [], notes, pace, pitchLimits ? limits : null));
       router.replace('/jury');
     } catch (e) {
+      // запись уже сохранена: «Попробовать ещё раз» отправит её же, а не начнёт питч заново
       setError(`Could not get the review: ${(e as Error).message}`);
-      setSending(false);
       finished.current = false;
     }
   };
 
   // лимит времени вышел — заканчиваем сами
   useEffect(() => {
-    if (elapsed >= maxSec && !finished.current) finish();
+    // после ошибки отправки (sending остаётся) не повторяем сами — ждём «Try again»
+    if (elapsed >= maxSec && !finished.current && !sending) finish();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [elapsed, maxSec]);
 
@@ -272,7 +315,7 @@ export default function Stage() {
   const hud = landscape
     ? { top: insets.top + (big ? 28 : 10), left: insets.left + (big ? 40 : 24), right: insets.right + (big ? 40 : 24) }
     : { top: Math.max(insets.top + 8, height * 0.125), left: width * 0.135, right: width * 0.135 };
-  const notice = error || (!micOk ? `The microphone is unavailable — nothing is being recorded${env.useMocks ? '; you can continue in mock mode' : ''}.` : '');
+  const notice = sending || !started ? '' : error || (!micOk ? `The microphone is unavailable — nothing is being recorded${env.useMocks ? '; you can continue in mock mode' : ''}.` : '');
 
   const timer = (
     <View style={[styles.board, styles.timer, big && styles.timerBig]}>
@@ -295,10 +338,10 @@ export default function Stage() {
     </View>
   );
   const finishButton = (
+    // закончить можно в любой момент: короткий питч бэкенд не отвергает, он просто получает меньше баллов за тайминг
     <Button
       size={big ? 'md' : 'sm'}
-      title={elapsed < minSec ? `${formatTime(minSec - elapsed)} more` : landscape ? 'Finish pitch' : 'Finish\npitch'}
-      disabled={elapsed < minSec}
+      title={landscape ? 'Finish pitch' : 'Finish\npitch'}
       loading={sending}
       onPress={finish}
       style={styles.finish}
@@ -312,14 +355,18 @@ export default function Stage() {
       facing={camera}
       onFacing={setCamera}
       onReady={(video, stream) => {
-        // видео в разборе показывается только на телефоне — на компьютере его не пишем, сцене легче
-        if (finished.current || wide) return;
-        // камеру сменили — прежний кусок видео закрываем, запись идёт дальше с новой камеры
-        capture.current?.stop();
-        capture.current = startCapture(video, stream, {
-          clock: now,
-          onLook: (on) => (awaySince.current = on ? null : now()),
-        });
+        if (finished.current) return;
+        setCameraOn(true);
+        startCamera.current = () => {
+          // камеру сменили — прежний кусок видео закрываем, запись идёт дальше с новой камеры
+          capture.current?.stop();
+          capture.current = startCapture(video, stream, {
+            clock: now,
+            onLook: (on) => (awaySince.current = on ? null : now()),
+          });
+        };
+        // до Start только превью: съёмка начнётся вместе с таймером
+        if (startedRef.current) startCamera.current();
       }}
       size={withSlides ? (big ? 220 : landscape ? 130 : 140) : big ? 280 : landscape ? 150 : 190}
       tilt={landscape ? 5 : -4}
@@ -335,13 +382,13 @@ export default function Stage() {
           <View style={[styles.row, big && { gap: 20 }]}>
             {timer}
             <View style={styles.grow}>{attentionBar}</View>
-            {finishButton}
+            {started && finishButton}
           </View>
         ) : (
           <>
             <View style={styles.row}>
               <View style={styles.grow}>{timer}</View>
-              {finishButton}
+              {started && finishButton}
             </View>
             {attentionBar}
           </>
@@ -362,6 +409,44 @@ export default function Stage() {
           cameraFrame
         )}
       </View>
+      {!started && (
+        <View style={[styles.ready, { paddingBottom: insets.bottom + 16, paddingLeft: insets.left + 16, paddingRight: insets.right + 16 }]}>
+          <View style={styles.readyCard}>
+            <Text style={styles.readyLabel}>You are on stage</Text>
+            <Text style={styles.readyTitle} numberOfLines={2}>
+              {topic.title}
+            </Text>
+            <Text style={styles.readyText}>
+              Speak for {formatRange(limits.min, limits.max)}. The timer, the recording and the room start when you press Start.
+            </Text>
+            <View style={styles.checks}>
+              <Text style={[styles.check, mic === 'denied' && { color: c.bad }]}>
+                {mic === 'ok' ? '✓ Microphone ready' : mic === 'asking' ? '… Allow the microphone' : '✕ Microphone blocked — allow it in the browser settings'}
+              </Text>
+              <Text style={styles.check}>{cameraOn ? '✓ Camera on' : '… Camera (optional): allow it to track eye contact'}</Text>
+            </View>
+          </View>
+          <Button size="lg" title={mic === 'asking' ? 'Waiting for the microphone…' : 'Start'} disabled={mic === 'asking'} onPress={begin} style={styles.start} />
+        </View>
+      )}
+      {sending && (
+        <View style={[styles.pending, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 16 }]}>
+          {error ? (
+            <View style={styles.pendingCard}>
+              <ErrorText>{error}</ErrorText>
+              <Button title="Try again" onPress={finish} />
+            </View>
+          ) : (
+            <Pending
+              style={styles.pendingCard}
+              title="Reviewing your pitch"
+              steps={['Saving your recording', 'Transcribing and scoring your speech', 'The jury prepares questions']}
+              current={step}
+              note="Usually 10–30 seconds. Please keep this screen open."
+            />
+          )}
+        </View>
+      )}
       {notice ? (
         <View style={[styles.notice, { bottom: insets.bottom + 12 }]}>
           <Text style={styles.noticeText}>{notice}</Text>
@@ -400,6 +485,16 @@ const styles = StyleSheet.create({
   hintPortrait: { alignSelf: 'center', top: 132 },
   hintDot: { width: 14, height: 14, borderRadius: 7, backgroundColor: c.bad, borderWidth: 2, borderColor: c.ink },
   hintText: { fontFamily: font.bold, fontSize: 16, lineHeight: 21, color: c.ink, flexShrink: 1 },
+  ready: { position: 'absolute', left: 0, right: 0, bottom: 0, alignItems: 'center', gap: 12 },
+  readyCard: { width: '100%', maxWidth: 520, gap: 6, backgroundColor: c.paper, borderRadius: 20, padding: 18, ...outline, ...shadow(4) },
+  readyLabel: { fontFamily: font.bold, fontSize: 12, letterSpacing: 1, textTransform: 'uppercase', color: c.burnt },
+  readyTitle: { fontFamily: font.display, fontSize: 24, lineHeight: 30, color: c.ink },
+  readyText: { fontFamily: font.body, fontSize: 15, lineHeight: 21, color: c.ink },
+  checks: { gap: 2, marginTop: 4 },
+  check: { fontFamily: font.semi, fontSize: 14, lineHeight: 20, color: c.graphite },
+  start: { width: '100%', maxWidth: 520 },
+  pending: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(22, 20, 24, 0.55)', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16 },
+  pendingCard: { width: '100%', maxWidth: 460, gap: 12 },
   notice: { position: 'absolute', left: 20, right: 20, alignItems: 'center' },
   noticeText: { fontFamily: font.bold, fontSize: 14, color: c.bad, backgroundColor: c.paper, borderRadius: 12, overflow: 'hidden', paddingHorizontal: 14, paddingVertical: 8, ...outline },
 });

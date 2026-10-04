@@ -1,3 +1,5 @@
+import { Platform, type ViewStyle } from 'react-native';
+
 // Палитра и шрифты из макета: кремовый фон, тушь, один оранжевый акцент.
 export const c = {
   cream: '#F9F7E1',
@@ -32,13 +34,35 @@ export const font = {
 
 /** Контур и жёсткая тень-смещение — как обводка у персонажей. */
 export const outline = { borderWidth: 2.5, borderColor: c.ink } as const;
-export const shadow = (offset = 5, color: string = c.ink) => ({ boxShadow: `${offset}px ${offset}px 0 ${color}` });
+
+/**
+ * Жёсткая тень без размытия. На iOS CSS `boxShadow` рисуется розовой плашкой,
+ * поэтому там тень идёт старыми свойствами слоя.
+ */
+export function shadow(offset = 5, color: string = c.ink): ViewStyle {
+  if (Platform.OS === 'ios') {
+    return {
+      shadowColor: color,
+      shadowOffset: { width: offset, height: offset },
+      shadowOpacity: 1,
+      shadowRadius: 0,
+    };
+  }
+  return { boxShadow: `${offset}px ${offset}px 0 ${color}` };
+}
 
 export const JUROR_NAME: Record<string, string> = { strict: 'Strict', kind: 'Kind', skeptic: 'Sceptic' };
 
 export function formatTime(sec: number): string {
   const s = Math.max(0, Math.ceil(sec));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+/** Сколько говорить: «20–45 sec», «1–3 min» или «1:30–4:00», если минуты не целые. */
+export function formatRange(minSec: number, maxSec: number): string {
+  if (maxSec < 60) return `${minSec}–${maxSec} sec`;
+  if (minSec % 60 === 0 && maxSec % 60 === 0) return `${minSec / 60}–${maxSec / 60} min`;
+  return `${formatTime(minSec)}–${formatTime(maxSec)}`;
 }
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];

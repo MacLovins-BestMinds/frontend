@@ -1,6 +1,7 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -12,7 +13,8 @@ import {
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import Animated, { FadeInDown } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { c, font, outline, shadow } from '@/design/theme';
 import { useLayout } from '@/hooks/useLayout';
@@ -21,19 +23,46 @@ import { Backdrop } from './Backdrop';
 
 type Children = { children?: ReactNode };
 
-/** Экран: кремовый фон с рисунками и силуэтами зала, прокрутка. Ширину держит Container. */
-export function Page({ children, scroll = true }: Children & { scroll?: boolean }) {
+// в приложении страницы въезжают нативным переходом стека; в браузере стек не анимирует — страница появляется сама
+const enter = Platform.OS === 'web' ? FadeInDown.duration(320).withInitialValues({ opacity: 0, transform: [{ translateY: 18 }] }) : undefined;
+
+/**
+ * Экран: кремовый фон с рисунками и силуэтами зала, прокрутка. Ширину держит Container.
+ * Фон и прокрутка идут до самых краёв экрана: текст уезжает под строку статуса и полоску «домой»,
+ * а отступы безопасной зоны стоят внутри прокрутки — сверху и снизу нет голых полос.
+ * sticky — первый ребёнок (стеклянная шапка) прилипает к верху и сама уходит под строку статуса.
+ * footer — главные кнопки экрана: приклеены к низу и всегда под пальцем, контент прокручивается под ними.
+ */
+export function Page({ children, scroll = true, sticky = false, footer }: Children & { scroll?: boolean; sticky?: boolean; footer?: ReactNode }) {
+  const insets = useSafeAreaInsets();
+  const sides = { paddingLeft: insets.left, paddingRight: insets.right };
+  // контенту нужен отступ снизу на высоту панели, иначе последние карточки окажутся под ней
+  const [footerHeight, setFooterHeight] = useState(0);
+  const bottom = footer ? footerHeight + 16 : insets.bottom + 16;
   return (
-    <SafeAreaView style={styles.page}>
+    <View style={styles.page}>
       <Backdrop />
-      {scroll ? (
-        <ScrollView contentContainerStyle={styles.pageContent} keyboardShouldPersistTaps="handled">
-          {children}
-        </ScrollView>
-      ) : (
-        children
-      )}
-    </SafeAreaView>
+      <Animated.View entering={enter} style={[styles.body, sides]}>
+        {scroll ? (
+          <ScrollView
+            contentContainerStyle={[styles.pageContent, { paddingTop: sticky ? 0 : insets.top, paddingBottom: bottom }]}
+            scrollIndicatorInsets={{ top: sticky ? 0 : insets.top, bottom: footer ? footerHeight : insets.bottom }}
+            keyboardShouldPersistTaps="handled"
+            stickyHeaderIndices={sticky ? [0] : undefined}>
+            {children}
+          </ScrollView>
+        ) : (
+          <View style={[styles.body, { paddingTop: insets.top, paddingBottom: footer ? footerHeight : insets.bottom }]}>{children}</View>
+        )}
+      </Animated.View>
+      {footer ? (
+        <View
+          style={[styles.footer, { paddingBottom: insets.bottom + 12, paddingLeft: insets.left, paddingRight: insets.right }]}
+          onLayout={(e) => setFooterHeight(e.nativeEvent.layout.height)}>
+          <Container>{footer}</Container>
+        </View>
+      ) : null}
+    </View>
   );
 }
 
@@ -96,6 +125,7 @@ export function Button({ title, onPress, variant = 'primary', size = 'md', disab
       disabled={disabled || loading}
       style={({ pressed }) => [
         styles.button,
+        Platform.OS === 'web' && styles.buttonWeb,
         size === 'sm' && styles.buttonSm,
         size === 'lg' && styles.buttonLg,
         variant === 'primary' && styles.primary,
@@ -167,7 +197,18 @@ export function Field(props: TextInputProps) {
 
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: c.cream },
+  body: { flex: 1 },
   pageContent: { flexGrow: 1 },
+  footer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingTop: 12,
+    backgroundColor: 'rgba(249, 247, 225, 0.94)',
+    borderTopWidth: 2,
+    borderTopColor: 'rgba(22, 20, 24, 0.12)',
+  },
   container: { width: '100%', alignSelf: 'center' },
   error: { fontFamily: font.semi, fontSize: 15, lineHeight: 21, color: c.bad },
   button: {
@@ -186,6 +227,8 @@ const styles = StyleSheet.create({
   inkButton: { backgroundColor: c.ink, ...shadow(4, c.paper) },
   disabled: { opacity: 0.45 },
   pressed: { transform: [{ translateX: 2 }, { translateY: 2 }] },
+  // в браузере нажатие и отпускание идут плавно; в приложении Pressable отрисовывает их сам
+  buttonWeb: { transitionProperty: 'transform, box-shadow, opacity', transitionDuration: '120ms' } as ViewStyle,
   buttonText: { fontFamily: font.bold, fontSize: 18, lineHeight: 23, color: c.ink, textAlign: 'center' },
   buttonTextSm: { fontSize: 15, lineHeight: 19 },
   card: { backgroundColor: c.paper, borderRadius: 20, padding: 24, gap: 10, ...outline },

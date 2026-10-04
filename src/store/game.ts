@@ -2,9 +2,9 @@ import { create } from 'zustand';
 
 import { Platform } from 'react-native';
 
-import { onUnauthorized, setAuthToken } from '@/api/client';
+import { mediaUrl, onUnauthorized, setAuthToken } from '@/api/client';
 import type { Slide } from '@/slides/render';
-import type { Case, Delivery, Difficulty, Finish, HistoryRound, Pace, JuryAnswer, JuryQuestion, Mode, OwnPitchInput, Round, RoundReview, User } from '@/api/types';
+import type { Case, Delivery, Difficulty, Finish, HistoryRound, Pace, PitchLimits, JuryAnswer, JuryQuestion, Mode, OwnPitchInput, Round, RoundReview, User } from '@/api/types';
 
 const SESSION_KEY = 'stage-zero-session';
 
@@ -51,6 +51,9 @@ type GameState = {
   /** Уровень сложности раунда. */
   difficulty: Difficulty;
   setDifficulty: (difficulty: Difficulty) => void;
+  /** Своя длина питча в секундах; null — как задаёт уровень. Это настройка игрока, между раундами не сбрасывается. */
+  pitchLimits: PitchLimits | null;
+  setPitchLimits: (limits: PitchLimits | null) => void;
   signIn: (user: User, token: string) => void;
   signOut: () => void;
   openReview: (review: RoundReview) => void;
@@ -89,6 +92,7 @@ export const useGame = create<GameState>((set) => ({
   pace: 'normal',
   difficulty: 'easy',
   slides: [],
+  pitchLimits: null,
   juryQuestions: [],
   pitchAudioUri: null,
   pitchVideoUri: null,
@@ -106,6 +110,7 @@ export const useGame = create<GameState>((set) => ({
   setPace: (pace) => set({ pace }),
   setDifficulty: (difficulty) => set({ difficulty }),
   setSlides: (slides) => set({ slides }),
+  setPitchLimits: (pitchLimits) => set({ pitchLimits }),
   signIn: (user, token) => {
     setAuthToken(token);
     saveSession({ user, token });
@@ -126,7 +131,8 @@ export const useGame = create<GameState>((set) => ({
       juryQuestions: review.jury_questions,
       juryAnswers: review.jury_answers,
       result: review.result,
-      pitchAudioUri: null,
+      // звук хранится на сервере — старое выступление можно переслушать; видео остаётся только у только что сыгранного
+      pitchAudioUri: review.audio_url ? mediaUrl(review.audio_url) : null,
       pitchVideoUri: null,
     }),
   setJuryQuestions: (juryQuestions) => set({ juryQuestions }),
@@ -168,3 +174,8 @@ export const useGame = create<GameState>((set) => ({
 
 // сервер перестал принимать токен — выходим, экраны сами вернут на главную
 onUnauthorized(() => useGame.getState().signOut());
+
+/** Сколько говорить в этом раунде: своя длина игрока или лимиты уровня, которые прислал сервер. */
+export function pitchLimitsFor(round: Round | null, custom: PitchLimits | null): PitchLimits {
+  return custom ?? { min: round?.pitch_min_sec ?? 60, max: round?.pitch_max_sec ?? 180 };
+}

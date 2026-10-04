@@ -9,6 +9,7 @@ import type {
   Difficulty,
   FitSlides,
   Pace,
+  PitchLimits,
   PickedFile,
   Signup,
   Delivery,
@@ -47,10 +48,27 @@ export function onUnauthorized(handler: () => void) {
   onSignedOut = handler;
 }
 
+/**
+ * Приложение: файлы в multipart уходят через XMLHttpRequest. Глобальный fetch в Expo SDK 57 — это expo/fetch,
+ * а он не понимает части FormData вида { uri, name, type } и падает «Unsupported FormDataPart implementation».
+ */
+function sendForm(url: string, init: RequestInit & { headers: Record<string, string> }): Promise<Response> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open(init.method ?? 'POST', url);
+    Object.entries(init.headers).forEach(([k, v]) => xhr.setRequestHeader(k, v));
+    xhr.onload = () => resolve(new Response(xhr.responseText, { status: xhr.status }));
+    xhr.onerror = () => reject(new Error('Network request failed'));
+    xhr.ontimeout = () => reject(new Error('Network request timed out'));
+    xhr.send(init.body as FormData);
+  });
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (!env.apiUrl) throw new Error('EXPO_PUBLIC_API_URL is not set');
   const headers = { ...(init?.headers as Record<string, string> | undefined), ...(token ? { Authorization: `Bearer ${token}` } : {}) };
-  const res = await fetch(env.apiUrl.replace(/\/$/, '') + path, { ...init, headers });
+  const url = env.apiUrl.replace(/\/$/, '') + path;
+  const res = Platform.OS !== 'web' && init?.body instanceof FormData ? await sendForm(url, { ...init, headers }) : await fetch(url, { ...init, headers });
   // вход по неверному паролю тоже отвечает 401 — выходим только там, где токен был отправлен
   if (res.status === 401 && token && !path.startsWith('/api/auth/')) onSignedOut();
   if (!res.ok) {
@@ -81,8 +99,10 @@ async function appendAudio(form: FormData, uri: string) {
     const ext = blob.type.includes('mp4') ? 'm4a' : blob.type.includes('ogg') ? 'ogg' : 'webm';
     form.append('audio', blob, `audio.${ext}`);
   } else {
-    // React Native кладёт файл в multipart по объекту с uri
-    form.append('audio', { uri, name: 'audio.m4a', type: 'audio/mp4' } as unknown as Blob);
+    // React Native кладёт файл в multipart по объекту с uri; имя и тип — по тому, что реально записалось
+    const ext = uri.split('?')[0].split('.').pop()?.toLowerCase();
+    const file = ext === 'wav' ? { name: 'audio.wav', type: 'audio/wav' } : ext === 'aac' ? { name: 'audio.aac', type: 'audio/aac' } : { name: 'audio.m4a', type: 'audio/mp4' };
+    form.append('audio', { uri, ...file } as unknown as Blob);
   }
 }
 
@@ -157,7 +177,7 @@ export const api = {
       ? mocked(mocks.refine(mode))
       : post<RefineResponse>('/api/ai/refine', { text, audience, mode }),
 
-  delivery: async (roundId: string, audioUri: string | null, gaze: GazePoint[] = [], notes = '', pace: Pace = 'normal') => {
+  delivery: async (roundId: string, audioUri: string | null, gaze: GazePoint[] = [], notes = '', pace: Pace = 'normal', limits: PitchLimits | null = null) => {
     if (env.useMocks) return mocked(mocks.delivery());
     if (!audioUri) throw new Error('There is no recording of the pitch');
     const form = new FormData();
@@ -166,6 +186,11 @@ export const api = {
     // заметки с подготовки: ИИ подскажет, что из запланированного так и не прозвучало
     if (notes.trim()) form.append('notes', notes.trim());
     form.append('pace', pace);
+    // своя длина питча: тайминг оценивается по ней, а не по лимитам уровня
+    if (limits) {
+      form.append('min_sec', String(limits.min));
+      form.append('max_sec', String(limits.max));
+    }
     return request<Delivery>(`/api/ai/rounds/${roundId}/delivery`, { method: 'POST', body: form });
   },
 
@@ -186,6 +211,14 @@ export const api = {
       method: 'POST',
       body: form,
     });
+  },
+
+  /** Пропустить вопрос жюри: засчитывается 0 баллов. */
+  jurySkip: (roundId: string, questionId: string) => {
+    if (env.useMocks) return mocked<JuryAnswer>({ score: 0, comment: 'Skipped — no points for this question.' });
+    const form = new FormData();
+    form.append('question_id', questionId);
+    return request<JuryAnswer>(`/api/ai/rounds/${roundId}/jury/skip`, { method: 'POST', body: form });
   },
 
   finish: (roundId: string) =>

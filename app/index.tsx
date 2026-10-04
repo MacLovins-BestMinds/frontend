@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { api } from '@/api/client';
 import { GoogleButton } from '@/auth/GoogleButton';
@@ -16,8 +16,8 @@ import { Button, Card, Container, ErrorText, Field, H2, H3, Label, Muted, P, Sma
 
 const STEPS = [
   { n: '1', title: 'You get a topic', short: 'The wheel gives you a topic', text: 'The wheel picks a simple everyday topic: your favourite food, cats or dogs, your city. Spin as many times as you like.' },
-  { n: '2', title: '5 minutes to prepare', short: '5 minutes to prepare', text: 'Read the brief, see what is expected of you, jot down notes. No slides.' },
-  { n: '3', title: 'You pitch and answer the jury', short: 'Pitch to the room, then jury questions', text: '1–3 minutes in front of the room, then one question from each jury member. At the end — a review and a rank.' },
+  { n: '2', title: 'Time to prepare', short: 'A few minutes to prepare', text: 'Read the brief, look things up in other tabs, jot down notes. Need longer? Add time — we ping you when it is up.' },
+  { n: '3', title: 'You pitch and answer the jury', short: 'Pitch to the room, then jury questions', text: '1–3 minutes in front of the room, or as long as you choose, then one question from each jury member. At the end — a review and a rank.' },
 ];
 
 const REACTIONS = [
@@ -70,6 +70,7 @@ export default function Landing() {
   const user = useGame((s) => s.user);
   const signIn = useGame((s) => s.signIn);
   const scroll = useRef<ScrollView>(null);
+  const insets = useSafeAreaInsets();
   const anchors = useRef<Record<string, number>>({});
   const [finalHeight, setFinalHeight] = useState(0);
   const [loginOpen, setLoginOpen] = useState(false);
@@ -166,9 +167,13 @@ export default function Landing() {
   const cta = <TicketButton title="Start training" stubTop="entry" stubBottom="free" onPress={start} stretch={!wide} />;
 
   return (
-    <SafeAreaView style={styles.page}>
+    <View style={styles.page}>
       <Backdrop crowd={false} />
-      <ScrollView ref={scroll} contentContainerStyle={styles.grow}>
+      {/* фон до краёв экрана, отступы безопасной зоны — внутри прокрутки */}
+      <ScrollView
+        ref={scroll}
+        contentContainerStyle={[styles.grow, { paddingTop: insets.top, paddingBottom: insets.bottom, paddingLeft: insets.left, paddingRight: insets.right }]}
+        scrollIndicatorInsets={{ top: insets.top, bottom: insets.bottom }}>
         <AppHeader home="/">
           <Button title={user ? 'Menu' : 'Sign in'} variant="secondary" size="sm" onPress={start} style={wide ? shadow(3) : undefined} />
         </AppHeader>
@@ -205,7 +210,9 @@ export default function Landing() {
           {wide ? (
             <View style={styles.heroArt}>
               <View style={styles.heroFrame}>
-                <Image source={ART.hero} style={styles.heroImage} resizeMode="cover" accessibilityLabel="The stage: ten audience members, silhouettes behind them, the jury at a table in front" />
+                <View style={styles.heroClip}>
+                  <Image source={ART.hero} style={styles.heroImage} resizeMode="cover" accessibilityLabel="The stage: ten audience members, silhouettes behind them, the jury at a table in front" />
+                </View>
               </View>
             </View>
           ) : (
@@ -401,7 +408,7 @@ export default function Landing() {
           </Pressable>
         </Pressable>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -424,7 +431,8 @@ const styles = StyleSheet.create({
   stepRowNum: { fontFamily: font.display, fontSize: 20, color: c.burnt, minWidth: 20 },
   stepRowText: { fontFamily: font.semi, fontSize: 15, color: c.ink, flex: 1 },
   heroArt: { flex: 1.15 },
-  heroFrame: { width: '100%', aspectRatio: 16 / 9, borderRadius: 24, overflow: 'hidden', transform: [{ rotate: '1.2deg' }], ...outline, ...shadow(8) },
+  heroFrame: { width: '100%', aspectRatio: 16 / 9, borderRadius: 24, transform: [{ rotate: '1.2deg' }], ...outline, ...shadow(8) },
+  heroClip: { flex: 1, borderRadius: 22, overflow: 'hidden' },
   heroImage: { position: 'absolute', width: '100%', height: '100%' },
   dark: { backgroundColor: c.ink },
   section: { paddingVertical: 72, gap: 36 },
