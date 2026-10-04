@@ -1,22 +1,19 @@
 import { Redirect, router } from 'expo-router';
-import { useRef } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { c, font } from '@/design/theme';
 import { useLayout } from '@/hooks/useLayout';
 import { useGame } from '@/store/game';
 import { AppHeader } from '@/ui/AppHeader';
-import { Paddle, Stamp } from '@/ui/decor';
-import type { PitchPlayerHandle } from '@/ui/PitchPlayer';
-import { PitchVideo } from '@/ui/PitchVideo';
-import { Transcript, type TranscriptHandle } from '@/ui/Transcript';
+import { GlassButton } from '@/ui/Glass';
+import { goMenu } from '@/ui/nav';
+import { DashedLine, Paddle, Stamp } from '@/ui/decor';
+import { Recording } from '@/ui/Recording';
 import { Button, Card, Container, H1, H3, Label, Muted, P, Page, Small } from '@/ui/primitives';
 
 export default function Result() {
   const { wide } = useLayout();
   const { result, delivery, juryAnswers, juryQuestions, pitchAudioUri, pitchVideoUri, pitchVideoOffset, mode, reviewOf } = useGame();
-  const transcript = useRef<TranscriptHandle>(null);
-  const video = useRef<PitchPlayerHandle>(null);
 
   if (!result) return <Redirect href="/" />;
 
@@ -30,17 +27,11 @@ export default function Result() {
     : { content: undefined, delivery: undefined };
   const pron = delivery?.pronunciation;
 
-  // когда игрок не смотрел в зал: начало и длительность берём из событий разбора
-  const away = (delivery?.events ?? [])
-    .filter((e) => e.type === 'gaze_off')
-    .map((e) => ({ from: e.t, to: e.t + Number(e.text.match(/\d+(\.\d+)?/)?.[0] ?? 0) }));
-  const contact = delivery?.metrics.gaze_on_ratio;
-  const longest = Math.round(Math.max(0, ...away.map((s) => s.to - s.from)));
 
   return (
-    <Page>
-      <AppHeader>
-        <Button title="Menu" variant="secondary" size="sm" onPress={() => router.replace('/menu')} />
+    <Page sticky>
+      <AppHeader glass>
+        <GlassButton icon="home" title="Menu" onPress={goMenu} />
       </AppHeader>
       <Container style={styles.main}>
         <View style={styles.head}>
@@ -62,6 +53,7 @@ export default function Result() {
               </View>
             </View>
             <View style={[styles.stampRow, wide && styles.stampRowWide]}>
+              {wide ? <DashedLine color="#5E584C" style={styles.stampRule} /> : null}
               <Stamp title={result.rank.title} caption="rank" trend={result.rank.trend} size={wide ? 132 : 104} color={c.orange} tilt={-9} />
               {wide && <Small style={styles.stampNote}>The jury has stamped it. Your rank is based on the average score of your last five rounds.</Small>}
             </View>
@@ -78,44 +70,14 @@ export default function Result() {
         {delivery && (
           <View style={[styles.columns, wide && styles.columnsWide]}>
             <View style={[styles.left, wide && styles.leftWide]}>
-              {/* видео пока показываем только на телефоне; у него своя дорожка — только моменты, когда взгляд ушёл из зала */}
-              {!wide && pitchVideoUri ? (
-                <Card flat style={styles.recording}>
-                  <H3>Your recording</H3>
-                  <PitchVideo
-                    ref={video}
-                    uri={pitchVideoUri}
-                    offset={pitchVideoOffset}
-                    fallbackDuration={duration}
-                    marks={away.map((s) => ({ t: s.from, color: c.markGaze }))}
-                    notes={away.map((s) => ({ ...s, text: 'eyes off the room' }))}
-                    onPlay={() => transcript.current?.pause()}
-                  />
-                  <View style={styles.contact}>
-                    <Label>Eye contact</Label>
-                    {typeof contact === 'number' ? (
-                      <>
-                        <Text style={styles.contactValue}>{Math.round(contact * 100)}%</Text>
-                        <Muted>
-                          {away.length === 0
-                            ? 'You kept your eyes on the room the whole time.'
-                            : `You looked away ${away.length === 1 ? 'once' : `${away.length} times`} for more than 3 seconds, the longest for ${longest} s. The markers on the track show where.`}
-                        </Muted>
-                      </>
-                    ) : (
-                      <Muted>Eye contact is not measured yet, so the track has no markers. Watch the recording: are your eyes on the room?</Muted>
-                    )}
-                  </View>
-                </Card>
-              ) : null}
-              <Transcript
-                ref={transcript}
+              <Recording
                 delivery={delivery}
                 audioUri={pitchAudioUri}
+                videoUri={pitchVideoUri}
+                videoOffset={pitchVideoOffset}
                 duration={duration}
                 wide={wide}
                 noRecording={reviewOf ? 'Recordings are not stored, so this round has only the transcript and the marks.' : 'The recording of this pitch is not available — markers only show the time.'}
-                onPlay={() => video.current?.pause()}
               />
             </View>
 
@@ -165,7 +127,7 @@ export default function Result() {
           ) : (
             <Button title="Another round" onPress={() => router.replace('/wheel')} />
           )}
-          <Button title={reviewOf ? 'Menu' : 'Your progress'} variant="secondary" onPress={() => router.replace(reviewOf ? '/menu' : '/profile')} />
+          <Button title={reviewOf ? 'Menu' : 'Your progress'} variant="secondary" onPress={() => (reviewOf ? goMenu() : router.replace('/profile'))} />
         </View>
       </Container>
     </Page>
@@ -185,7 +147,8 @@ const styles = StyleSheet.create({
   total: { fontFamily: font.display, fontSize: 96, lineHeight: 104, color: c.orange },
   outOf: { fontFamily: font.body, fontSize: 18, color: c.onInkMuted },
   stampRow: { flexDirection: 'row', alignItems: 'center', gap: 16 },
-  stampRowWide: { borderTopWidth: 2, borderTopColor: '#5E584C', borderStyle: 'dashed', paddingTop: 18, alignSelf: 'stretch' },
+  stampRowWide: { paddingTop: 18, alignSelf: 'stretch' },
+  stampRule: { position: 'absolute', top: 0, left: 0, right: 0 },
   stampNote: { flex: 1, color: c.onInkMuted, fontSize: 15, lineHeight: 21 },
   paddles: { flexDirection: 'row', gap: 10, alignItems: 'flex-start' },
   paddlesWide: { flex: 2, gap: 16, paddingTop: 8 },
@@ -193,9 +156,6 @@ const styles = StyleSheet.create({
   columnsWide: { flexDirection: 'row', alignItems: 'flex-start', gap: 28 },
   left: { gap: 20 },
   leftWide: { flex: 1.5, gap: 24 },
-  recording: { borderRadius: 22, gap: 14 },
-  contact: { gap: 6 },
-  contactValue: { fontFamily: font.display, fontSize: 48, lineHeight: 54, color: c.ink },
   side: { gap: 20 },
   sideWide: { flex: 1, gap: 24 },
   answer: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },

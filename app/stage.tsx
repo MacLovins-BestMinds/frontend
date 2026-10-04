@@ -36,7 +36,6 @@ const EASE = 0.3; // шкала идёт к цели плавно, а не пр�
 const STEP_SEC = 0.5;
 const HINT_MS = 3500;
 const HINT_MIN_MS = 1800;
-const MOCK_MIN_SEC = 5;
 // Без микрофона на моках речь имитируется: 18 секунд «говорим», 9 секунд «молчим».
 const MOCK_CYCLE_SEC = 27;
 const MOCK_TALK_SEC = 18;
@@ -82,7 +81,7 @@ function goal(voice: number, content: number | null, slips: number, silent: numb
 export default function Stage() {
   useStayAwake();
   const { user, topic, round, notes, camera, pace, difficulty, setCamera, setDelivery, setPitchAudio, setPitchVideo } = useGame();
-  const { width, height, wide } = useLayout();
+  const { width, height } = useLayout();
   const insets = useSafeAreaInsets();
   const recorder = useRecorder();
   const [elapsed, setElapsed] = useState(0);
@@ -91,6 +90,7 @@ export default function Stage() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
   const audioUri = useRef<string | null>(null);
+  const audioStart = useRef(0); // секунда раунда, с которой реально пишется звук
   const finished = useRef(false);
   const stopLive = useRef<() => void>(() => {});
   const startedAt = useRef(Date.now());
@@ -157,11 +157,15 @@ export default function Stage() {
     if (e.type === 'pace') say(e.verdict === 'fast' ? 'Too fast — slow down' : dragging ? 'You chose a fast pace — speed up' : 'Too slow — pick up the pace', 'bad');
   };
 
-  const minSec = env.useMocks ? MOCK_MIN_SEC : (round?.pitch_min_sec ?? 60);
   const maxSec = round?.pitch_max_sec ?? 180;
 
   useEffect(() => {
-    recorder.start().then(setMicOk);
+    recorder.start().then((ok) => {
+      // звук начинает писаться не в ноль раунда, а когда рекордер реально запустился (разрешение, запуск);
+      // от этой секунды и считаем место видео относительно звука
+      audioStart.current = ok ? now() : 0;
+      setMicOk(ok);
+    });
     startedAt.current = Date.now();
     const id = setInterval(() => setElapsed(now()), 250);
     // живой поток: микрофон говорит залу, звучит ли голос, а бэкенд присылает оговорки и оценку содержания
@@ -245,7 +249,8 @@ export default function Stage() {
       if (capture.current) {
         shot.current = await capture.current.stop();
         capture.current = null;
-        setPitchVideo(shot.current.videoUri, shot.current.videoOffset);
+        // смещение видео — относительно начала звукозаписи: в разборе время ведёт звук
+        setPitchVideo(shot.current.videoUri, shot.current.videoOffset - audioStart.current);
       }
       setDelivery(await api.delivery(round.round_id, audioUri.current, shot.current?.gaze ?? [], notes, pace));
       router.replace('/jury');
@@ -293,10 +298,10 @@ export default function Stage() {
     </View>
   );
   const finishButton = (
+    // закончить можно в любой момент: короткий питч бэкенд не отвергает, он просто получает меньше баллов за тайминг
     <Button
       size={big ? 'md' : 'sm'}
-      title={elapsed < minSec ? `${formatTime(minSec - elapsed)} more` : landscape ? 'Finish pitch' : 'Finish\npitch'}
-      disabled={elapsed < minSec}
+      title={landscape ? 'Finish pitch' : 'Finish\npitch'}
       loading={sending}
       onPress={finish}
       style={styles.finish}
@@ -332,8 +337,7 @@ export default function Stage() {
           facing={camera}
           onFacing={setCamera}
           onReady={(video, stream) => {
-            // видео в разборе показывается только на телефоне — на компьютере его не пишем, сцене легче
-            if (finished.current || wide) return;
+            if (finished.current) return;
             // камеру сменили — прежний кусок видео закрываем, запись идёт дальше с новой камеры
             capture.current?.stop();
             capture.current = startCapture(video, stream, {

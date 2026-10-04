@@ -11,6 +11,7 @@ import { c } from '@/design/theme';
 import { useLayout } from '@/hooks/useLayout';
 import { useGame } from '@/store/game';
 import { AppHeader } from '@/ui/AppHeader';
+import { goBack } from '@/ui/nav';
 import { TicketButton, Wheel } from '@/ui/decor';
 import { LevelPicker } from '@/ui/LevelPicker';
 import { Button, Card, Container, ErrorText, H1, H3, Label, Muted, Page } from '@/ui/primitives';
@@ -71,10 +72,8 @@ export default function WheelScreen() {
   const size = wide ? 380 : 250;
 
   return (
-    <Page>
-      <AppHeader>
-        <Button title="Menu" variant="secondary" size="sm" onPress={() => router.replace('/menu')} />
-      </AppHeader>
+    <Page sticky>
+      <AppHeader glass back={() => goBack()} />
       <Container style={[styles.main, wide && styles.mainWide]}>
         <View style={[styles.wheelBox, wide && styles.wheelBoxWide]}>
           <Svg width={34} height={38} viewBox="0 0 28 32" style={styles.pointer}>
@@ -124,7 +123,7 @@ export default function WheelScreen() {
                 stretch={!wide}
               />
             ) : null}
-            <Button title="Spin again" variant="secondary" disabled={spinning} onPress={() => run()} />
+            <Button title="Spin again" variant="secondary" disabled={spinning} onPress={() => run()} style={!wide ? styles.full : undefined} />
           </View>
         </View>
       </Container>
@@ -141,4 +140,5 @@ const styles = StyleSheet.create({
   side: { gap: 18, flex: 1 },
   titleNarrow: { fontSize: 28, lineHeight: 34 },
   actions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 16, marginTop: 4 },
+  full: { width: '100%' },
 });

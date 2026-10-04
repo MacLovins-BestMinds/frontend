@@ -1,9 +1,10 @@
-import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
-import Svg, { Circle, G, Path, Rect } from 'react-native-svg';
+import { useState } from 'react';
+import { Platform, Pressable, StyleSheet, Text, View, type LayoutChangeEvent, type StyleProp, type ViewStyle } from 'react-native';
+import Svg, { Circle, G, Line, Path, Rect } from 'react-native-svg';
 
 import { c, font, outline, shadow } from '@/design/theme';
 
-/** Цветок с платьев и скатерти — знак Stage Zero. */
+/** Цветок с платьев и скатерти — знак Stager. */
 export function Flower({ size = 26, center = c.orange }: { size?: number; center?: string }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24">
@@ -23,7 +24,7 @@ export function Logo({ size = 22 }: { size?: number }) {
   return (
     <View style={styles.logo}>
       <Flower size={size + 4} />
-      <Text style={[styles.logoText, { fontSize: size, lineHeight: size * 1.25 }]}>Stage Zero</Text>
+      <Text style={[styles.logoText, { fontSize: size, lineHeight: size * 1.25 }]}>Stager</Text>
     </View>
   );
 }
@@ -66,6 +67,60 @@ export function CameraIcon({ size = 28, color = c.cream }: { size?: number; colo
   );
 }
 
+/**
+ * Пунктир через SVG: у iOS `borderStyle: 'dashed'` не рисуется на одной стороне и вместе со скруглением,
+ * а в консоль сыпется Unsupported dashed / dotted border style.
+ */
+export function DashedRing({ size, color, strokeWidth = 3, dash = '7 5' }: { size: number; color: string; strokeWidth?: number; dash?: string }) {
+  const r = (size - strokeWidth) / 2;
+  return (
+    <Svg width={size} height={size} style={StyleSheet.absoluteFill} pointerEvents="none">
+      <Circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={strokeWidth} strokeDasharray={dash} />
+    </Svg>
+  );
+}
+
+export function DashedLine({
+  vertical = false,
+  color,
+  thickness = 2,
+  dash = '6 5',
+  style,
+}: {
+  vertical?: boolean;
+  color: string;
+  thickness?: number;
+  dash?: string;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const [span, setSpan] = useState(0);
+  const onLayout = (e: LayoutChangeEvent) => {
+    const next = Math.round(vertical ? e.nativeEvent.layout.height : e.nativeEvent.layout.width);
+    setSpan((prev) => (prev === next ? prev : next));
+  };
+  return (
+    <View
+      pointerEvents="none"
+      onLayout={onLayout}
+      style={[vertical ? { width: thickness, alignSelf: 'stretch' } : { height: thickness, alignSelf: 'stretch' }, style]}
+    >
+      {span > 0 ? (
+        <Svg width={vertical ? thickness : span} height={vertical ? span : thickness}>
+          <Line
+            x1={vertical ? thickness / 2 : 0}
+            y1={vertical ? 0 : thickness / 2}
+            x2={vertical ? thickness / 2 : span}
+            y2={vertical ? span : thickness / 2}
+            stroke={color}
+            strokeWidth={thickness}
+            strokeDasharray={dash}
+          />
+        </Svg>
+      ) : null}
+    </View>
+  );
+}
+
 type StampProps = { title: string; caption?: string; captionBelow?: boolean; trend?: Trend; size?: number; color?: string; fill?: string; tilt?: number };
 
 /** Круглая печать жюри: звание. */
@@ -73,12 +128,8 @@ export function Stamp({ title, caption, captionBelow, trend, size = 132, color =
   const captionNode = caption ? <Text style={[styles.stampCaption, { color }, captionBelow && styles.stampRange]}>{caption}</Text> : null;
   const inner = size - 24;
   return (
-    <View
-      style={[
-        styles.stamp,
-        { width: size, height: size, borderRadius: size / 2, borderColor: color, backgroundColor: fill, transform: [{ rotate: `${tilt}deg` }] },
-      ]}
-    >
+    <View style={[styles.stamp, { width: size, height: size, borderRadius: size / 2, backgroundColor: fill, transform: [{ rotate: `${tilt}deg` }] }]}>
+      <DashedRing size={size} color={color} />
       <View style={[styles.stampInner, { width: inner, height: inner, borderRadius: inner / 2, borderColor: color }]}>
         {captionBelow ? null : captionNode}
         <Text style={[styles.stampTitle, { color, fontSize: size * 0.105, lineHeight: size * 0.14 }]}>{title}</Text>
@@ -110,10 +161,11 @@ export function TicketButton({ title, stubTop, stubBottom, onPress, style, stret
       accessibilityRole="button"
       accessibilityLabel={title}
       onPress={onPress}
-      style={({ pressed }) => [styles.ticket, stretch && { alignSelf: 'stretch' }, pressed && { transform: [{ translateX: 2 }, { translateY: 2 }] }, style]}
+      style={({ pressed }) => [styles.ticket, stretch && styles.ticketStretch, pressed && { transform: [{ translateX: 2 }, { translateY: 2 }] }, style]}
     >
       <Text style={[styles.ticketTitle, stretch && { flex: 1 }]}>{title}</Text>
       <View style={styles.ticketStub}>
+        <DashedLine vertical color={c.ink} thickness={2.5} dash="4 4" style={styles.ticketPerf} />
         <Text style={styles.ticketStubTop}>{stubTop}</Text>
         <Text style={styles.ticketStubBottom}>{stubBottom}</Text>
       </View>
@@ -232,14 +284,19 @@ export function Paddle({ value, label, weight, note, accent, tilt = -4, size = 1
 const styles = StyleSheet.create({
   logo: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   logoText: { fontFamily: font.display, color: c.ink },
-  stamp: { borderWidth: 3, borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center' },
+  stamp: { alignItems: 'center', justifyContent: 'center' },
   stampInner: { borderWidth: 2.5, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8, gap: 2 },
   stampCaption: { fontFamily: font.bold, fontSize: 10, letterSpacing: 1.3, textTransform: 'uppercase' },
   stampTitle: { fontFamily: font.display, textAlign: 'center' },
   stampRange: { fontFamily: font.body, fontSize: 14, letterSpacing: 0, textTransform: 'none' },
   bulbs: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   bulb: { backgroundColor: c.bulbOff, borderWidth: 1.5, borderColor: c.paper },
-  bulbLit: { backgroundColor: c.orange, boxShadow: '0 0 0 3px rgba(247,166,30,0.35)' },
+  bulbLit: {
+    backgroundColor: c.orange,
+    ...(Platform.OS === 'ios'
+      ? { shadowColor: c.orange, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.45, shadowRadius: 4 }
+      : { boxShadow: '0 0 0 3px rgba(247,166,30,0.35)' }),
+  },
   ticket: {
     flexDirection: 'row',
     alignItems: 'stretch',
@@ -250,8 +307,11 @@ const styles = StyleSheet.create({
     ...outline,
     ...shadow(5),
   },
+  // во всю ширину строки: в ряду с переносом одного alignSelf мало — текст с flex: 1 сжимался в ноль на iOS
+  ticketStretch: { alignSelf: 'stretch', width: '100%' },
   ticketTitle: { fontFamily: font.bold, fontSize: 18, lineHeight: 23, color: c.ink, paddingHorizontal: 22, paddingVertical: 16, textAlign: 'center' },
-  ticketStub: { borderLeftWidth: 2.5, borderLeftColor: c.ink, borderStyle: 'dashed', paddingHorizontal: 15, alignItems: 'center', justifyContent: 'center' },
+  ticketStub: { paddingHorizontal: 15, alignItems: 'center', justifyContent: 'center' },
+  ticketPerf: { position: 'absolute', left: 0, top: 0, bottom: 0 },
   ticketStubTop: { fontFamily: font.semi, fontSize: 11, letterSpacing: 1.1, textTransform: 'uppercase', color: c.ink },
   ticketStubBottom: { fontFamily: font.display, fontSize: 16, lineHeight: 20, color: c.ink },
   tape: { position: 'absolute', top: -14, width: 84, height: 28, backgroundColor: c.orange, borderWidth: 2, borderColor: c.ink },

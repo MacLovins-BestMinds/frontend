@@ -82,13 +82,18 @@ type Props = {
   noRecording: string;
   /** Запись заиграла — можно остановить другой плеер. */
   onPlay?: () => void;
+  /**
+   * Время ведёт видео со звуком: своего плеера у текста нет, слово подсвечивается по видео,
+   * а нажатие на слово или отметку перематывает видео.
+   */
+  media?: { time: number; playing: boolean; playFrom: (seconds: number) => void };
 };
 
 /**
  * Транскрипт со своим плеером во всю ширину: ошибки отмечены прямо в тексте, а слово, которое звучит сейчас,
  * подсвечено. Нажатие на слово или отметку перематывает запись туда.
  */
-export const Transcript = forwardRef<TranscriptHandle, Props>(function Transcript({ delivery, audioUri, duration, wide, noRecording, onPlay }, ref) {
+export const Transcript = forwardRef<TranscriptHandle, Props>(function Transcript({ delivery, audioUri, duration, wide, noRecording, onPlay, media }, ref) {
   const player = useRef<PitchPlayerHandle>(null);
   const [now, setNow] = useState<{ time: number; playing: boolean }>({ time: 0, playing: false });
   const { transcript, events } = delivery;
@@ -97,23 +102,27 @@ export const Transcript = forwardRef<TranscriptHandle, Props>(function Transcrip
   // на дорожке текста — только то, что отмечено в тексте; взгляд живёт на дорожке видео
   const marks = useMemo(() => events.filter((e) => e.type !== 'gaze_off').map((e) => ({ t: e.t, color: MARK[e.type]?.color ?? c.markPause })), [events]);
 
-  const playFrom = (seconds: number) => player.current?.playFrom(seconds);
+  const follow = useRef(media);
+  follow.current = media;
+  const playFrom = (seconds: number) => (follow.current ? follow.current.playFrom(seconds) : player.current?.playFrom(seconds));
+  const clock = media ?? now;
   useImperativeHandle(ref, () => ({ playFrom, pause: () => player.current?.pause() }));
 
   // слово, которое звучит сейчас: последнее, начавшееся к этому моменту
   let active = -1;
-  if (audioUri && words.length && (now.playing || now.time > 0)) {
+  if ((media || audioUri) && words.length && (clock.playing || clock.time > 0)) {
     let lo = 0;
     let hi = words.length - 1;
     while (lo <= hi) {
       const mid = (lo + hi) >> 1;
-      if (words[mid].t <= now.time + 0.05) {
+      if (words[mid].t <= clock.time + 0.05) {
         active = mid;
         lo = mid + 1;
       } else hi = mid - 1;
     }
   }
-  const jump = useMemo(() => (index: number) => player.current?.playFrom(words[index].t + 1), [words]); // playFrom начинает на секунду раньше
+  // playFrom начинает на секунду раньше
+  const jump = useMemo(() => (index: number) => (follow.current ? follow.current.playFrom(words[index].t + 1) : player.current?.playFrom(words[index].t + 1)), [words]);
 
   let cursor = 0; // слова идут по порядку — по ним проходим один раз
   const range = (from: number, to: number): ReactNode[] => {
@@ -149,7 +158,9 @@ export const Transcript = forwardRef<TranscriptHandle, Props>(function Transcrip
         </View>
       </View>
 
-      {audioUri ? (
+      {media ? (
+        <Small>{words.length ? 'The word you are saying is highlighted as the video plays. Tap any word or marker to jump there.' : 'Tap a marker to jump the video to that moment.'}</Small>
+      ) : audioUri ? (
         <>
           <PitchPlayer
             ref={player}

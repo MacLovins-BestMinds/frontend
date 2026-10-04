@@ -10,7 +10,7 @@ import type { PitchVideoProps } from './PitchVideo';
  * Видеозапись выступления, браузер. Видео играет со своим звуком и само ведёт ползунок и маркеры —
  * второго плеера нет, поэтому подгонять звук к картинке не нужно и запись не дёргается.
  */
-export const PitchVideo = forwardRef<PitchPlayerHandle, PitchVideoProps>(function PitchVideo({ uri, offset, fallbackDuration, marks, notes, onPlay }, ref) {
+export const PitchVideo = forwardRef<PitchPlayerHandle, PitchVideoProps>(function PitchVideo({ uri, offset, fallbackDuration, marks, notes, onPlay, onTime }, ref) {
   const video = useRef<HTMLVideoElement | null>(null);
   const [state, setState] = useState({ time: 0, playing: false, length: 0 });
 
@@ -78,23 +78,31 @@ export const PitchVideo = forwardRef<PitchPlayerHandle, PitchVideoProps>(functio
     pause: () => video.current?.pause(),
   }));
 
+  const report = useRef(onTime);
+  report.current = onTime;
+  useEffect(() => {
+    report.current?.(position, state.playing);
+  }, [position, state.playing]);
+
   const note = notes?.find((n) => position >= n.from && position <= n.to)?.text;
 
   return (
     <View style={styles.wrap}>
+      <View style={styles.limit}>
       <View style={styles.frame}>
         {createElement('video', {
           ref: video,
           playsInline: true,
           preload: 'auto',
           onClick: toggle,
-          style: { position: 'absolute', width: '100%', height: '100%', objectFit: 'cover', cursor: 'pointer' },
+          style: { position: 'absolute', width: '100%', height: '100%', objectFit: 'contain', cursor: 'pointer' },
         })}
         {note ? (
           <View style={styles.note}>
             <Text style={styles.noteText}>{note}</Text>
           </View>
         ) : null}
+      </View>
       </View>
       <PlayerBar playing={state.playing} position={position} duration={duration} marks={marks} onToggle={toggle} onSeek={seek} />
     </View>
@@ -103,6 +111,8 @@ export const PitchVideo = forwardRef<PitchPlayerHandle, PitchVideoProps>(functio
 
 const styles = StyleSheet.create({
   wrap: { gap: 12 },
+  // ширину ограничивает обёртка: aspectRatio вместе с maxWidth на одном View вытягивает кадр
+  limit: { width: '100%', maxWidth: 720, alignSelf: 'center' },
   frame: { width: '100%', aspectRatio: 4 / 3, borderRadius: 18, overflow: 'hidden', backgroundColor: c.lens, ...outline, ...shadow(4) },
   note: { position: 'absolute', left: 10, bottom: 10, backgroundColor: c.orange, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 4, ...outline },
   noteText: { fontFamily: font.bold, fontSize: 13, color: c.ink },

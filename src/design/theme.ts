@@ -1,3 +1,5 @@
+import { Platform, type ViewStyle } from 'react-native';
+
 // Палитра и шрифты из макета: кремовый фон, тушь, один оранжевый акцент.
 export const c = {
   cream: '#F9F7E1',
@@ -32,7 +34,22 @@ export const font = {
 
 /** Контур и жёсткая тень-смещение — как обводка у персонажей. */
 export const outline = { borderWidth: 2.5, borderColor: c.ink } as const;
-export const shadow = (offset = 5, color: string = c.ink) => ({ boxShadow: `${offset}px ${offset}px 0 ${color}` });
+
+/**
+ * Жёсткая тень без размытия. На iOS CSS `boxShadow` рисуется розовой плашкой,
+ * поэтому там тень идёт старыми свойствами слоя.
+ */
+export function shadow(offset = 5, color: string = c.ink): ViewStyle {
+  if (Platform.OS === 'ios') {
+    return {
+      shadowColor: color,
+      shadowOffset: { width: offset, height: offset },
+      shadowOpacity: 1,
+      shadowRadius: 0,
+    };
+  }
+  return { boxShadow: `${offset}px ${offset}px 0 ${color}` };
+}
 
 export const JUROR_NAME: Record<string, string> = { strict: 'Strict', kind: 'Kind', skeptic: 'Sceptic' };
 
