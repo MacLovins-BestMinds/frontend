@@ -5,7 +5,7 @@ import type { Delivery, TimelineEvent } from '@/api/types';
 import { c, font, formatTime } from '@/design/theme';
 import { translate, useT } from '@/i18n';
 
-import { PitchPlayer, type PitchPlayerHandle } from './PitchPlayer';
+import { PitchPlayer, type PitchPlayerHandle, type PlayerMark } from './PitchPlayer';
 import { Card, H3, Small } from './primitives';
 
 /** Цвет отметки по типу; название — markName (словарь review). */
@@ -17,7 +17,8 @@ export const MARK: Record<TimelineEvent['type'], { color: string }> = {
   hesitation: { color: c.markPause },
   pace: { color: c.markPace },
   gaze_off: { color: c.markGaze },
-  good_pause: { color: c.markPause },
+  // удачная пауза — не ошибка: зелёная, как сильные моменты хода мысли
+  good_pause: { color: c.markGood },
 };
 const LEGEND = ['filler', 'repeat', 'long_pause', 'pace'] as const;
 
@@ -97,6 +98,12 @@ type Props = {
   noRecording: string;
   /** Запись заиграла — можно остановить другой плеер. */
   onPlay?: () => void;
+  /** Где своя запись текста и играет ли она — для нарезки ошибок и хода мысли. */
+  onTime?: (seconds: number, playing: boolean) => void;
+  /** Ещё отметки на дорожку своего плеера — моменты хода мысли. */
+  extraMarks?: PlayerMark[];
+  /** Что показать сразу под своим плеером — нарезку ошибок. */
+  aside?: ReactNode;
   /**
    * Время ведёт видео со звуком: своего плеера у текста нет, слово подсвечивается по видео,
    * а нажатие на слово или отметку перематывает видео.
@@ -108,7 +115,10 @@ type Props = {
  * Транскрипт со своим плеером во всю ширину: ошибки отмечены прямо в тексте, а слово, которое звучит сейчас,
  * подсвечено. Нажатие на слово или отметку перематывает запись туда.
  */
-export const Transcript = forwardRef<TranscriptHandle, Props>(function Transcript({ delivery, audioUri, duration, wide, noRecording, onPlay, media }, ref) {
+export const Transcript = forwardRef<TranscriptHandle, Props>(function Transcript(
+  { delivery, audioUri, duration, wide, noRecording, onPlay, onTime, extraMarks, aside, media },
+  ref,
+) {
   const t = useT('review');
   const player = useRef<PitchPlayerHandle>(null);
   const [now, setNow] = useState<{ time: number; playing: boolean }>({ time: 0, playing: false });
@@ -116,8 +126,11 @@ export const Transcript = forwardRef<TranscriptHandle, Props>(function Transcrip
   const words = useMemo(() => delivery.words ?? [], [delivery.words]);
   // подписи значков и отметок — на языке интерфейса: пересчитываем и при его смене (t меняется вместе с языком)
   const pieces = useMemo(() => markTranscript(transcript, events), [transcript, events, t]);
-  // на дорожке текста — только то, что отмечено в тексте; взгляд живёт на дорожке видео
-  const marks = useMemo(() => events.filter((e) => e.type !== 'gaze_off').map((e) => ({ t: e.t, color: MARK[e.type]?.color ?? c.markPause, label: markLabel(e) })), [events, t]);
+  // на дорожке текста — то, что отмечено в тексте, и моменты хода мысли; взгляд живёт на дорожке видео
+  const marks = useMemo(
+    () => [...events.filter((e) => e.type !== 'gaze_off').map((e) => ({ t: e.t, color: MARK[e.type]?.color ?? c.markPause, label: markLabel(e) })), ...(extraMarks ?? [])],
+    [events, extraMarks, t],
+  );
 
   const follow = useRef(media);
   follow.current = media;
@@ -159,7 +172,8 @@ export const Transcript = forwardRef<TranscriptHandle, Props>(function Transcrip
     return nodes;
   };
 
-  const legend = [...LEGEND, ...(events.some((e) => e.type === 'profanity') ? (['profanity'] as const) : []), ...(events.some((e) => e.type === 'gaze_off') ? (['gaze_off'] as const) : [])];
+  const has = (type: TimelineEvent['type']) => events.some((e) => e.type === type);
+  const legend = [...LEGEND, ...(has('profanity') ? (['profanity'] as const) : []), ...(has('gaze_off') ? (['gaze_off'] as const) : []), ...(has('good_pause') ? (['good_pause'] as const) : [])];
 
   return (
     <Card flat style={[styles.card, wide && styles.cardWide]}>
@@ -186,9 +200,11 @@ export const Transcript = forwardRef<TranscriptHandle, Props>(function Transcrip
             marks={marks}
             onTime={(time, playing) => {
               setNow({ time, playing });
+              onTime?.(time, playing);
               if (playing && !now.playing) onPlay?.();
             }}
           />
+          {aside}
           <Small>{words.length ? t('audioWords') : t('audioMarks')}</Small>
         </>
       ) : (

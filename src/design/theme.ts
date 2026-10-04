@@ -20,8 +20,13 @@ export const c = {
   markRepeat: '#FBD98A',
   markSwear: '#E8736A',
   markPause: '#D9D4BC',
-  markPace: '#CFE3D0',
+  // темп — сиреневый: зелёный в разборе значит только удачу
+  markPace: '#E4C8F0',
   markGaze: '#CDD5F3',
+  // удачные места (хорошая пауза, сильный момент хода мысли) — зелёные, провалы хода мысли — красно-оранжевые;
+  // тушь на обоих читается с контрастом выше 6:1
+  markGood: '#9FD89A',
+  markBad: '#F07C5C',
 } as const;
 
 export const font = {
@@ -32,6 +37,8 @@ export const font = {
   medium: 'Rubik_500Medium',
   semi: 'Rubik_600SemiBold',
   bold: 'Rubik_700Bold',
+  // цитаты из питча
+  italic: 'Rubik_500Medium_Italic',
 } as const;
 
 /** Контур и жёсткая тень-смещение — как обводка у персонажей. */

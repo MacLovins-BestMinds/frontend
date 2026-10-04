@@ -43,7 +43,7 @@ function watchLength(el: HTMLMediaElement, onLength: (seconds: number) => void):
  * Звукозаписи нет — видео играет со своим звуком и само ведёт время.
  */
 export const PitchVideo = forwardRef<PitchPlayerHandle, PitchVideoProps>(function PitchVideo(
-  { uri, offset, fallbackDuration, marks, notes, onPlay, onTime, audioUri },
+  { uri, offset, fallbackDuration, marks, notes, onPlay, onTime, audioUri, overlay },
   ref,
 ) {
   const video = useRef<HTMLVideoElement | null>(null);
@@ -199,11 +199,12 @@ export const PitchVideo = forwardRef<PitchPlayerHandle, PitchVideoProps>(functio
             onClick: toggle,
             style: { position: 'absolute', width: '100%', height: '100%', objectFit: 'contain', cursor: 'pointer' },
           })}
-          {note ? (
-            <View style={styles.note}>
-              <Text style={styles.noteText}>{note}</Text>
-            </View>
-          ) : null}
+          {overlay ??
+            (note ? (
+              <View style={styles.note}>
+                <Text style={styles.noteText}>{note}</Text>
+              </View>
+            ) : null)}
         </View>
       </View>
       <PlayerBar playing={playing} position={position} duration={duration} marks={marks} onToggle={toggle} onSeek={seek} />
