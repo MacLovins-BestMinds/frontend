@@ -213,6 +213,14 @@ export const api = {
     });
   },
 
+  /** Пропустить вопрос жюри: засчитывается 0 баллов. */
+  jurySkip: (roundId: string, questionId: string) => {
+    if (env.useMocks) return mocked<JuryAnswer>({ score: 0, comment: 'Skipped — no points for this question.' });
+    const form = new FormData();
+    form.append('question_id', questionId);
+    return request<JuryAnswer>(`/api/ai/rounds/${roundId}/jury/skip`, { method: 'POST', body: form });
+  },
+
   finish: (roundId: string) =>
     env.useMocks ? mocked(mocks.finish()) : post<Finish>(`/api/game/rounds/${roundId}/finish`),
 

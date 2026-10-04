@@ -1,6 +1,6 @@
 import { Redirect, router } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { api } from '@/api/client';
 import * as DocumentPicker from 'expo-document-picker';
@@ -13,7 +13,7 @@ import { useGame } from '@/store/game';
 import { AppHeader } from '@/ui/AppHeader';
 import { goBack } from '@/ui/nav';
 import { TicketButton } from '@/ui/decor';
-import { Button, Card, Container, ErrorText, Field, H1, H3, Label, Muted, P, Page, Small } from '@/ui/primitives';
+import { Button, Card, Container, ErrorText, Field, H1, Label, Muted, Page, Small } from '@/ui/primitives';
 
 type RefineMode = 'structure' | 'improve';
 
@@ -30,6 +30,8 @@ export default function OwnPitch() {
   const [deck, setDeck] = useState<PickedFile | null>(null);
   const [fitted, setFitted] = useState<FitSlides | null>(null);
   const [error, setError] = useState('');
+  // что ИИ поменял и исходный текст — по нажатию, чтобы карточка с результатом оставалась короткой
+  const [details, setDetails] = useState(false);
 
   if (!user) return <Redirect href="/" />;
 
@@ -42,6 +44,7 @@ export default function OwnPitch() {
       const source = original || text;
       if (!original) setOriginal(text);
       setRefined(await api.refine(source.trim(), audience, mode));
+      setDetails(false);
     } catch (e) {
       setError(`The AI helper did not respond: ${(e as Error).message}`);
     } finally {
@@ -83,6 +86,13 @@ export default function OwnPitch() {
     router.push('/prep');
   };
 
+  const cta = (
+    <>
+      <ErrorText>{error}</ErrorText>
+      <TicketButton title="On to preparation" stubTop="5 min" stubBottom="→" onPress={start} stretch={!wide} />
+    </>
+  );
+
   return (
     <Page sticky>
       <AppHeader glass back={() => goBack()} />
@@ -121,6 +131,8 @@ export default function OwnPitch() {
               })}
             </View>
           </Card>
+          {/* на широком экране кнопка слева, под аудиторией; на узком — в конце, после текста */}
+          {wide && cta}
         </View>
         <View style={[styles.col, wide && styles.colWide]}>
           <Card flat>
@@ -152,6 +164,7 @@ export default function OwnPitch() {
           {fitted && (
             <Card tone="accent">
               <Label style={{ color: c.ink }}>Your pitch, slide by slide</Label>
+              <ScrollView style={styles.slides} contentContainerStyle={styles.slidesInner} nestedScrollEnabled>
               {fitted.slides.map((s) => (
                 <View key={s.n} style={styles.slide}>
                   <View style={[styles.slideNum, s.kind === 'demo' && { backgroundColor: c.ink }]}>
@@ -163,6 +176,7 @@ export default function OwnPitch() {
                   </View>
                 </View>
               ))}
+              </ScrollView>
               <View style={styles.refine}>
                 <Button title="Use this text" variant="ink" size="sm" onPress={() => setText(fitted.text)} />
                 <Button title="Restore mine" variant="secondary" size="sm" onPress={() => original && setText(original)} />
@@ -170,24 +184,41 @@ export default function OwnPitch() {
             </Card>
           )}
           {refined && (
-            <Card tone="accent">
-              <Label style={{ color: c.ink }}>After</Label>
-              <P>{refined.text}</P>
-              {refined.notes.map((n) => (
-                <Text key={n} style={styles.note}>
-                  • {n}
-                </Text>
-              ))}
-              <View style={styles.refine}>
+            <Card tone="accent" style={styles.result}>
+              <View style={styles.resultHead}>
+                <Label style={styles.resultLabel}>Improved text</Label>
                 <Button title="Use this text" variant="ink" size="sm" onPress={() => setText(refined.text)} />
                 <Button title="Restore mine" variant="secondary" size="sm" onPress={() => original && setText(original)} />
               </View>
-              <H3 style={styles.was}>Before</H3>
-              <Text style={styles.note}>{original}</Text>
+              {/* длинный текст прокручивается внутри, а не растягивает страницу */}
+              <ScrollView style={styles.resultBox} nestedScrollEnabled>
+                <Text style={styles.resultText}>{refined.text}</Text>
+              </ScrollView>
+              {(refined.notes.length > 0 || original) && (
+                <Pressable accessibilityRole="button" onPress={() => setDetails(!details)} style={styles.toggle}>
+                  <Text style={styles.toggleText}>
+                    {details ? 'Hide' : 'Show'} what changed{refined.notes.length ? ` (${refined.notes.length})` : ''} {details ? '▴' : '▾'}
+                  </Text>
+                </Pressable>
+              )}
+              {details && (
+                <View style={styles.details}>
+                  {refined.notes.map((n) => (
+                    <Text key={n} style={styles.small}>
+                      • {n}
+                    </Text>
+                  ))}
+                  {original ? (
+                    <>
+                      <Text style={styles.was}>Before</Text>
+                      <Text style={styles.small}>{original}</Text>
+                    </>
+                  ) : null}
+                </View>
+              )}
             </Card>
           )}
-          <ErrorText>{error}</ErrorText>
-          <TicketButton title="On to preparation" stubTop="5 min" stubBottom="→" onPress={start} stretch={!wide} />
+          {!wide && cta}
         </View>
       </Container>
     </Page>
@@ -208,8 +239,19 @@ const styles = StyleSheet.create({
   text: { minHeight: 220 },
   refine: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 4 },
   note: { fontFamily: font.body, fontSize: 15, lineHeight: 21, color: c.ink },
-  was: { fontSize: 17, marginTop: 8 },
+  result: { gap: 10, padding: 18 },
+  resultHead: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
+  resultLabel: { color: c.ink, flexGrow: 1 },
+  resultBox: { maxHeight: 200, backgroundColor: c.paper, borderRadius: 12, borderWidth: 2, borderColor: c.ink, paddingHorizontal: 12, paddingVertical: 10 },
+  resultText: { fontFamily: font.body, fontSize: 14, lineHeight: 20, color: c.ink },
+  toggle: { alignSelf: 'flex-start', minHeight: 32, justifyContent: 'center' },
+  toggleText: { fontFamily: font.semi, fontSize: 14, color: c.ink, textDecorationLine: 'underline' },
+  details: { gap: 6 },
+  small: { fontFamily: font.body, fontSize: 13, lineHeight: 18, color: c.ink },
+  was: { fontFamily: font.bold, fontSize: 14, color: c.ink, marginTop: 6 },
   file: { fontFamily: font.semi, fontSize: 14, color: c.graphite },
+  slides: { maxHeight: 260 },
+  slidesInner: { gap: 10 },
   slide: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },
   slideNum: { width: 30, height: 30, borderRadius: 15, backgroundColor: c.paper, alignItems: 'center', justifyContent: 'center', marginTop: 2, ...outline },
   slideNumText: { fontFamily: font.bold, fontSize: 14, color: c.ink },

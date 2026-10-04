@@ -86,6 +86,29 @@ export default function Jury() {
     await recorder.start();
   };
 
+  /** Пропустить вопрос: 0 баллов, сразу комментарий и «Дальше». Запись ответа, если шла, выбрасываем. */
+  const skip = async () => {
+    if (!round || !question || sending.current) return;
+    sending.current = true;
+    player.current?.stop();
+    if (phase === 'answering') await recorder.stop();
+    answerUri.current = null;
+    setPhase('sending');
+    setError('');
+    try {
+      const answer = await api.jurySkip(round.round_id, question.id);
+      addJuryAnswer(answer);
+      setScores((s) => ({ ...s, [question.juror]: answer.score }));
+      setComment({ score: answer.score, text: answer.comment });
+      setPhase('comment');
+    } catch (e) {
+      setError(`Could not skip the question: ${(e as Error).message}`);
+      setPhase('question');
+    } finally {
+      sending.current = false;
+    }
+  };
+
   const sendAnswer = async () => {
     // таймер на нуле и нажатие «Ответ готов» могут совпасть — отправляем один раз
     if (!round || !question || sending.current) return;
@@ -178,6 +201,9 @@ export default function Jury() {
         <Button title="Play the question" variant="secondary" onPress={() => playQuestion(mediaUrl(question.audio_url))} />
       )}
       {phase === 'question' && <Button title="Answer (up to 30 seconds)" onPress={startAnswer} />}
+      {(phase === 'question' || phase === 'answering') && (
+        <Button title="Skip this question (0 points)" variant="secondary" size="sm" onPress={skip} style={styles.skip} />
+      )}
       {(phase === 'answering' || phase === 'sending') && <Button title="Done answering" loading={phase === 'sending'} onPress={sendAnswer} />}
       {(phase === 'comment' || phase === 'finishing') && (
         <Button
@@ -322,6 +348,7 @@ const styles = StyleSheet.create({
   countdown: { alignSelf: 'center', alignItems: 'center', backgroundColor: c.ink, borderRadius: 20, paddingHorizontal: 28, paddingVertical: 10, transform: [{ rotate: '-2deg' }] },
   countdownValue: { fontFamily: font.display, fontSize: 64, lineHeight: 72, color: c.orange, fontVariant: ['tabular-nums'] },
   countdownLabel: { fontFamily: font.bold, fontSize: 12, letterSpacing: 1, textTransform: 'uppercase', color: c.onInkMuted },
+  skip: { alignSelf: 'center' },
   verdict: { flexDirection: 'row', alignItems: 'center', gap: 16 },
   verdictScore: { fontFamily: font.display, fontSize: 40, lineHeight: 46, color: c.ink },
 });
