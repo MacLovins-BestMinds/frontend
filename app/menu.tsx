@@ -10,16 +10,20 @@ import { useLayout } from '@/hooks/useLayout';
 import { useGame } from '@/store/game';
 import { AppHeader, NickChip } from '@/ui/AppHeader';
 import { Tape, TrendArrow, Wheel } from '@/ui/decor';
+import { LevelPicker } from '@/ui/LevelPicker';
 import { Button, Card, Chip, Container, ErrorText, H1, H3, Label, Muted, P, Page, Small } from '@/ui/primitives';
 
 export default function Menu() {
   const { wide } = useLayout();
   const user = useGame((s) => s.user);
   const startTopic = useGame((s) => s.startTopic);
+  const difficulty = useGame((s) => s.difficulty);
+  const setDifficulty = useGame((s) => s.setDifficulty);
   const [daily, setDaily] = useState<{ date: string; topic: Case } | null>(null);
   const [leaders, setLeaders] = useState<LeaderboardEntry[]>([]);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [error, setError] = useState('');
+  const [trainingWidth, setTrainingWidth] = useState(0);
 
   useEffect(() => {
     if (!user) return;
@@ -54,15 +58,20 @@ export default function Menu() {
     </Pressable>
   );
 
+  // Колесо растёт вместе с карточкой, а текст оставляет под него место справа — так они не налезают друг на друга.
+  const wheel = wide ? Math.max(220, Math.min(340, trainingWidth * 0.52)) : Math.max(150, Math.min(200, trainingWidth * 0.5));
+  const wheelRoom = wheel * 0.8 - (wide ? 32 : 24) + 8; // видимая часть колеса минус поле карточки
+
   const training = (
     <Card tone="accent" style={[styles.training, wide && styles.trainingWide]}>
-      <View style={[styles.wheel, wide ? styles.wheelWide : styles.wheelNarrow]} pointerEvents="none">
-        <Wheel size={wide ? 340 : 200} />
+      <View style={styles.measure} onLayout={(e) => setTrainingWidth(e.nativeEvent.layout.width)} pointerEvents="none" />
+      <View style={[styles.wheel, { right: -wheel * 0.2, bottom: -wheel * (wide ? 0.4 : 0.37) }]} pointerEvents="none">
+        <Wheel size={wheel} />
       </View>
       <Label style={styles.ink}>Training</Label>
-      <Text style={[styles.trainingTitle, !wide && styles.trainingTitleNarrow]}>Spin the wheel, get a topic</Text>
-      <P style={[styles.trainingText, !wide && { fontSize: 15, lineHeight: 21, maxWidth: 210 }]}>
-        {wide ? 'A category, then a case. 5 minutes to prepare and 1–3 minutes to pitch. The wheel is free — spin as many times as you like.' : '5 minutes to prepare, 1–3 minutes to pitch.'}
+      <Text style={[styles.trainingTitle, !wide && styles.trainingTitleNarrow, { marginRight: wheelRoom * 0.55 }]}>Spin the wheel, get a topic</Text>
+      <P style={[styles.trainingText, !wide && { fontSize: 15, lineHeight: 21 }, { marginRight: wheelRoom }]}>
+        {wide ? 'The wheel picks a topic for your level. A few minutes to prepare, then 1–3 minutes to pitch. Spin as many times as you like.' : 'A topic for your level, 1–3 minutes to pitch.'}
       </P>
       <Button title="Spin the wheel" variant="ink" onPress={() => router.push('/wheel')} style={styles.trainingButton} />
     </Card>
@@ -140,6 +149,10 @@ export default function Menu() {
           </View>
           {rankCard}
         </View>
+        <View style={styles.levelBlock}>
+          <Label>Difficulty</Label>
+          <LevelPicker value={difficulty} onChange={setDifficulty} compact={!wide} />
+        </View>
         <View style={wide ? styles.cardsWide : styles.cardsNarrow}>
           {training}
           {dailyCard}
@@ -158,6 +171,7 @@ const styles = StyleSheet.create({
   main: { paddingTop: 16, paddingBottom: 72, gap: 32 },
   mainNarrow: { paddingTop: 20, paddingBottom: 32, gap: 20 },
   grow: { flex: 1 },
+  levelBlock: { gap: 8 },
   ink: { color: c.ink },
   hello: { flexDirection: 'row', alignItems: 'flex-end', flexWrap: 'wrap', gap: 20 },
   lead: { fontSize: 20, lineHeight: 28, marginTop: 6 },
@@ -173,12 +187,11 @@ const styles = StyleSheet.create({
   cardsNarrow: { gap: 22 },
   training: { overflow: 'hidden', borderRadius: 24, gap: 12 },
   trainingWide: { flexGrow: 1.3, flexBasis: 420, padding: 32, minHeight: 380, gap: 16 },
+  measure: { position: 'absolute', left: 0, right: 0, top: 0, height: 0 },
   wheel: { position: 'absolute', transform: [{ rotate: '11deg' }] },
-  wheelWide: { right: -70, bottom: -110 },
-  wheelNarrow: { right: -62, bottom: -74 },
-  trainingTitle: { fontFamily: font.display, fontSize: 32, lineHeight: 38, color: c.ink, maxWidth: 420 },
-  trainingTitleNarrow: { fontSize: 22, lineHeight: 26, maxWidth: 220 },
-  trainingText: { maxWidth: 440 },
+  trainingTitle: { fontFamily: font.display, fontSize: 32, lineHeight: 38, color: c.ink },
+  trainingTitleNarrow: { fontSize: 22, lineHeight: 26 },
+  trainingText: {},
   trainingButton: { alignSelf: 'flex-start', marginTop: 'auto' },
   poster: { backgroundColor: c.paper, borderRadius: 6, padding: 22, paddingTop: 30, gap: 12, transform: [{ rotate: '1deg' }], ...outline },
   posterWide: { flexGrow: 1, flexBasis: 360, padding: 32, paddingTop: 38, gap: 14 },

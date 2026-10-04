@@ -5,16 +5,19 @@ import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from '
 import Svg, { Path } from 'react-native-svg';
 
 import { api } from '@/api/client';
-import type { Spin } from '@/api/types';
+import type { Difficulty, Spin } from '@/api/types';
 import { findAudience } from '@/content/audiences';
 import { c } from '@/design/theme';
 import { useLayout } from '@/hooks/useLayout';
 import { useGame } from '@/store/game';
 import { AppHeader } from '@/ui/AppHeader';
 import { TicketButton, Wheel } from '@/ui/decor';
+import { LevelPicker } from '@/ui/LevelPicker';
 import { Button, Card, Container, ErrorText, H1, H3, Label, Muted, Page } from '@/ui/primitives';
 
 const SPIN_MS = 1400;
+// сколько минут на подготовку даёт каждый уровень
+const PREP_MIN: Record<Difficulty, string> = { easy: '5 min', medium: '4 min', hard: '3 min' };
 type Phase = 'idle' | 'category' | 'case' | 'done';
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -23,6 +26,8 @@ export default function WheelScreen() {
   const { wide } = useLayout();
   const user = useGame((s) => s.user);
   const startTopic = useGame((s) => s.startTopic);
+  const difficulty = useGame((s) => s.difficulty);
+  const setDifficulty = useGame((s) => s.setDifficulty);
   const [spin, setSpin] = useState<Spin | null>(null);
   const [phase, setPhase] = useState<Phase>('idle');
   const [error, setError] = useState('');
@@ -34,13 +39,13 @@ export default function WheelScreen() {
   };
 
   // две прокрутки подряд: категория → кейс
-  const run = async () => {
+  const run = async (level: Difficulty = difficulty) => {
     setError('');
     setSpin(null);
     setPhase('category');
     rotate();
     try {
-      const [result] = await Promise.all([api.spin(), wait(SPIN_MS)]);
+      const [result] = await Promise.all([api.spin(level), wait(SPIN_MS)]);
       setSpin(result);
       setPhase('case');
       rotate();
@@ -81,6 +86,17 @@ export default function WheelScreen() {
         </View>
         <View style={styles.side}>
           <H1 style={!wide && styles.titleNarrow}>Topic wheel</H1>
+          {/* тема зависит от уровня: сменил уровень — колесо крутится заново */}
+          <LevelPicker
+            value={difficulty}
+            disabled={spinning}
+            compact
+            onChange={(level) => {
+              if (level === difficulty) return;
+              setDifficulty(level);
+              run(level);
+            }}
+          />
           <Card flat>
             <Label>Category</Label>
             <H3>{spin ? spin.category.title : 'Spinning…'}</H3>
@@ -99,7 +115,7 @@ export default function WheelScreen() {
             {ready ? (
               <TicketButton
                 title="Take this topic"
-                stubTop="5 min"
+                stubTop={PREP_MIN[difficulty]}
                 stubBottom="→"
                 onPress={() => {
                   startTopic('training', spin.case);
@@ -108,7 +124,7 @@ export default function WheelScreen() {
                 stretch={!wide}
               />
             ) : null}
-            <Button title="Spin again" variant="secondary" disabled={spinning} onPress={run} />
+            <Button title="Spin again" variant="secondary" disabled={spinning} onPress={() => run()} />
           </View>
         </View>
       </Container>

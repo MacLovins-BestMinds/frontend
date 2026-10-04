@@ -18,7 +18,7 @@ export type LiveHandlers = {
  * Живой поток звука в WS /api/ai/live. В приложении ещё не подключён (нужен @siteed/audio-studio
  * и development build) — возвращаем пустую остановку. В браузере работает live.web.ts.
  */
-export function startLive(_roundId: string | null, _handlers: LiveHandlers): () => void {
+export function startLive(_roundId: string | null, _handlers: LiveHandlers, _pace: 'slow' | 'normal' | 'fast' = 'normal'): () => void {
   return () => {};
 }
 

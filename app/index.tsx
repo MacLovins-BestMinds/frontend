@@ -1,9 +1,10 @@
 import { router } from 'expo-router';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { api } from '@/api/client';
+import { GoogleButton } from '@/auth/GoogleButton';
 import { c, font, outline, shadow } from '@/design/theme';
 import { useLayout } from '@/hooks/useLayout';
 import { ART, CHARACTERS } from '@/scene/assets';
@@ -72,8 +73,22 @@ export default function Landing() {
   const anchors = useRef<Record<string, number>>({});
   const [finalHeight, setFinalHeight] = useState(0);
   const [loginOpen, setLoginOpen] = useState(false);
+  const [email, setEmail] = useState('');
   const [nick, setNick] = useState('');
   const [password, setPassword] = useState('');
+  // после регистрации ждём код из письма; devCode — код в ответе сервера, когда почта на нём не настроена
+  const [pending, setPending] = useState<{ email: string; sent: boolean; devCode: string | null } | null>(null);
+  const [code, setCode] = useState('');
+  const [googleId, setGoogleId] = useState<string | null>(null);
+
+  // кнопка Google появляется, только если вход через Google настроен на сервере; спрашиваем при открытии формы
+  useEffect(() => {
+    if (!loginOpen) return;
+    api
+      .authConfig()
+      .then((config) => setGoogleId(config.google_client_id))
+      .catch(() => setGoogleId(null));
+  }, [loginOpen]);
   const [creating, setCreating] = useState(false); // «создать аккаунт» вместо «войти»
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -84,24 +99,69 @@ export default function Landing() {
     anchors.current[id] = e.nativeEvent.layout.y;
   };
 
+  const done = (session: { user: Parameters<typeof signIn>[0]; access_token: string }) => {
+    signIn(session.user, session.access_token);
+    setLoginOpen(false);
+    setPending(null);
+    setPassword('');
+    setCode('');
+    router.push('/menu');
+  };
+  const withGoogle = async (idToken: string) => {
+    setLoading(true);
+    setError('');
+    try {
+      done(await api.google(idToken));
+    } catch (e) {
+      setError(`Could not sign in with Google: ${(e as Error).message.replace(/^\d+: /, '')}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+  const resend = async () => {
+    if (!pending) return;
+    setError('');
+    try {
+      const sent = await api.resendCode(pending.email);
+      setPending({ email: sent.email, sent: sent.sent, devCode: sent.dev_code });
+    } catch (e) {
+      setError((e as Error).message.replace(/^\d+: /, ''));
+    }
+  };
+
   const enter = async () => {
     setLoading(true);
     setError('');
     try {
-      const session = creating ? await api.register(nick.trim(), password) : await api.login(nick.trim(), password);
-      signIn(session.user, session.access_token);
-      setLoginOpen(false);
-      setPassword('');
-      router.push('/menu');
+      if (pending) return done(await api.verify(pending.email, code.trim(), nick.trim()));
+      if (creating) {
+        const sent = await api.signup(email.trim(), nick.trim(), password);
+        // подтверждение почты на сервере выключено — аккаунт готов, входим сразу
+        if (sent.access_token && sent.user) return done({ user: sent.user, access_token: sent.access_token });
+        setCode('');
+        return setPending({ email: sent.email, sent: sent.sent, devCode: sent.dev_code });
+      }
+      done(await api.login(email.trim(), password));
     } catch (e) {
       const message = (e as Error).message.replace(/^\d+: /, '');
-      setError(creating ? `Could not create the account: ${message}` : `Could not sign in: ${message}`);
+      // почта не подтверждена — отправляем новый код и просим его ввести
+      if (!pending && !creating && message.startsWith('Confirm your email')) {
+        try {
+          const sent = await api.resendCode(email.trim());
+          setCode('');
+          return setPending({ email: sent.email, sent: sent.sent, devCode: sent.dev_code });
+        } catch {
+          // код не отправился — покажем исходную ошибку
+        }
+      }
+      setError(pending ? message : creating ? `Could not create the account: ${message}` : `Could not sign in: ${message}`);
     } finally {
       setLoading(false);
     }
   };
 
-  const canEnter = nick.trim().length >= 2 && password.length >= 6;
+  const validEmail = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim());
+  const canEnter = pending ? code.trim().length >= 4 : validEmail && password.length >= 6 && (!creating || nick.trim().length >= 2);
 
   const cta = <TicketButton title="Start training" stubTop="entry" stubBottom="free" onPress={start} stretch={!wide} />;
 
@@ -273,38 +333,70 @@ export default function Landing() {
         <Pressable style={styles.backdrop} onPress={() => setLoginOpen(false)} accessibilityLabel="Close">
           <Pressable style={styles.loginWrap} onPress={() => {}}>
             <Card style={styles.login}>
-              <View style={styles.tabs}>
-                {[false, true].map((mode) => (
-                  <Pressable
-                    key={String(mode)}
-                    accessibilityRole="tab"
-                    accessibilityState={{ selected: creating === mode }}
-                    onPress={() => (setCreating(mode), setError(''))}
-                    style={[styles.tab, creating === mode && styles.tabOn]}>
-                    <Text style={[styles.tabText, creating === mode && styles.tabTextOn]}>{mode ? 'Create account' : 'Sign in'}</Text>
-                  </Pressable>
-                ))}
-              </View>
-              <H3>{creating ? 'How should we announce you?' : 'Welcome back'}</H3>
-              <Field placeholder="Nickname" value={nick} onChangeText={setNick} autoCapitalize="none" autoCorrect={false} maxLength={50} autoFocus accessibilityLabel="Nickname" />
-              <Field
-                placeholder={creating ? 'Password, at least 6 characters' : 'Password'}
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry
-                autoCapitalize="none"
-                autoCorrect={false}
-                maxLength={100}
-                onSubmitEditing={() => canEnter && enter()}
-                accessibilityLabel="Password"
-              />
-              <ErrorText>{error}</ErrorText>
-              <Button title={creating ? 'Create account' : 'Step out'} onPress={enter} disabled={!canEnter} loading={loading} />
-              <Small>
-                {creating
-                  ? 'Your nickname shows on the leaderboard. Played before without a password? Use the same nickname — your rounds stay with you.'
-                  : 'Your rounds, rank and progress are kept in your account.'}
-              </Small>
+              {pending ? (
+                <>
+                  <Label>Confirm your email</Label>
+                  <H3>Enter the code</H3>
+                  <Small>
+                    {pending.sent
+                      ? `We sent a 6-digit code to ${pending.email}. It works for 15 minutes.`
+                      : `Mail is not set up on this server, so the code is shown right here: ${pending.devCode ?? 'see the server log'}.`}
+                  </Small>
+                  <Field placeholder="6-digit code" value={code} onChangeText={setCode} keyboardType="number-pad" maxLength={6} autoFocus onSubmitEditing={() => canEnter && enter()} accessibilityLabel="Confirmation code" />
+                  <ErrorText>{error}</ErrorText>
+                  <Button title="Confirm and step out" onPress={enter} disabled={!canEnter} loading={loading} />
+                  <View style={styles.codeLinks}>
+                    <Button title="Send a new code" variant="secondary" size="sm" onPress={resend} />
+                    <Button title="Back" variant="secondary" size="sm" onPress={() => (setPending(null), setError(''))} />
+                  </View>
+                </>
+              ) : (
+                <>
+                  <View style={styles.tabs}>
+                    {[false, true].map((mode) => (
+                      <Pressable
+                        key={String(mode)}
+                        accessibilityRole="tab"
+                        accessibilityState={{ selected: creating === mode }}
+                        onPress={() => (setCreating(mode), setError(''))}
+                        style={[styles.tab, creating === mode && styles.tabOn]}>
+                        <Text style={[styles.tabText, creating === mode && styles.tabTextOn]}>{mode ? 'Create account' : 'Sign in'}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                  <H3>{creating ? 'How should we announce you?' : 'Welcome back'}</H3>
+                  {googleId && (
+                    <>
+                      <GoogleButton clientId={googleId} onToken={withGoogle} onError={setError} />
+                      <View style={styles.or}>
+                        <View style={styles.orLine} />
+                        <Text style={styles.orText}>or with email</Text>
+                        <View style={styles.orLine} />
+                      </View>
+                    </>
+                  )}
+                  <Field placeholder="Email" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} maxLength={200} autoFocus accessibilityLabel="Email" />
+                  {creating && <Field placeholder="Nickname — shown on the leaderboard" value={nick} onChangeText={setNick} autoCapitalize="none" autoCorrect={false} maxLength={50} accessibilityLabel="Nickname" />}
+                  <Field
+                    placeholder={creating ? 'Password, at least 6 characters' : 'Password'}
+                    value={password}
+                    onChangeText={setPassword}
+                    secureTextEntry
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    maxLength={100}
+                    onSubmitEditing={() => canEnter && enter()}
+                    accessibilityLabel="Password"
+                  />
+                  <ErrorText>{error}</ErrorText>
+                  <Button title={creating ? 'Create account' : 'Step out'} onPress={enter} disabled={!canEnter} loading={loading} />
+                  <Small>
+                    {creating
+                      ? 'Your nickname shows on the leaderboard. Played before under a nickname? Use the same one — your rounds stay with you.'
+                      : 'Your rounds, rank and progress are kept in your account.'}
+                  </Small>
+                </>
+              )}
             </Card>
           </Pressable>
         </Pressable>
@@ -366,6 +458,10 @@ const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'rgba(22,20,24,0.6)', alignItems: 'center', justifyContent: 'center', padding: 20 },
   loginWrap: { width: '100%', maxWidth: 420 },
   login: { gap: 14 },
+  or: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  orLine: { flex: 1, height: 2, backgroundColor: c.onInkMuted },
+  orText: { fontFamily: font.semi, fontSize: 13, color: c.graphite },
+  codeLinks: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   tabs: { flexDirection: 'row', alignSelf: 'flex-start', borderRadius: 999, padding: 3, backgroundColor: c.cream, ...outline },
   tab: { paddingHorizontal: 16, minHeight: 38, justifyContent: 'center', borderRadius: 999 },
   tabOn: { backgroundColor: c.ink },

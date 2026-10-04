@@ -17,14 +17,14 @@ const NOISE_WINDOW = 12; // фон — самый тихий кадр за по�
  * PCM 16 кГц, моно, 16 бит уходят в WS /api/ai/live, откуда приходят события (паразит, долгая пауза, темп).
  * roundId = null — без сокета (моки): зал реагирует только на голос. Возвращает функцию остановки.
  */
-export function startLive(roundId: string | null, { onEvent, onVoice }: LiveHandlers): () => void {
+export function startLive(roundId: string | null, { onEvent, onVoice }: LiveHandlers, pace: 'slow' | 'normal' | 'fast' = 'normal'): () => void {
   let stopped = false;
   let ctx: AudioContext | null = null;
   let holdsMic = true;
   const quietest: number[] = []; // самый тихий кадр каждого из последних кусков
   let ws: WebSocket | null = null;
   if (roundId) {
-    const url = env.apiUrl.replace(/\/$/, '').replace(/^http/, 'ws') + `/api/ai/live?round_id=${encodeURIComponent(roundId)}`;
+    const url = env.apiUrl.replace(/\/$/, '').replace(/^http/, 'ws') + `/api/ai/live?round_id=${encodeURIComponent(roundId)}&pace=${pace}`;
     ws = new WebSocket(url);
     ws.binaryType = 'arraybuffer';
     ws.onmessage = (m) => {

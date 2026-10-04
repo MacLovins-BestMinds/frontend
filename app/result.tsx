@@ -1,102 +1,24 @@
 import { Redirect, router } from 'expo-router';
-import { useMemo, useRef } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useRef } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
 
-import type { TimelineEvent } from '@/api/types';
-import { c, font, formatTime } from '@/design/theme';
+import { c, font } from '@/design/theme';
 import { useLayout } from '@/hooks/useLayout';
 import { useGame } from '@/store/game';
 import { AppHeader } from '@/ui/AppHeader';
 import { Paddle, Stamp } from '@/ui/decor';
-import { PitchPlayer, type PitchPlayerHandle } from '@/ui/PitchPlayer';
+import type { PitchPlayerHandle } from '@/ui/PitchPlayer';
 import { PitchVideo } from '@/ui/PitchVideo';
+import { Transcript, type TranscriptHandle } from '@/ui/Transcript';
 import { Button, Card, Container, H1, H3, Label, Muted, P, Page, Small } from '@/ui/primitives';
-
-const MARK: Record<TimelineEvent['type'], { color: string; name: string }> = {
-  filler: { color: c.markFiller, name: 'filler word' },
-  repeat: { color: c.markRepeat, name: 'repeat' },
-  profanity: { color: c.markSwear, name: 'swearing' },
-  long_pause: { color: c.markPause, name: 'pause mid-phrase' },
-  hesitation: { color: c.markPause, name: 'hesitation' },
-  pace: { color: c.markPace, name: 'pace' },
-  gaze_off: { color: c.markGaze, name: 'looking away' },
-  good_pause: { color: c.markPause, name: 'pause' },
-};
-const LEGEND = ['filler', 'repeat', 'long_pause', 'pace'] as const;
-
-/** Кусок транскрипта: обычный текст, отмеченное место (паразит, повтор) или значок между словами (пауза, темп). */
-type Piece = { text: string; event?: TimelineEvent; badge?: boolean; before?: string; after?: string };
-
-/** Подпись значка между словами: «… 3.6 s …» для паузы, «fast · 196/min» для темпа, «eyes away · 4 s» для взгляда. */
-function badge(e: TimelineEvent): string {
-  const n = e.text.match(/\d+(\.\d+)?/)?.[0] ?? '';
-  if (e.type === 'gaze_off') return `eyes away · ${n} s`;
-  if (e.type === 'pace') return `${e.text.includes('fast') ? 'fast' : 'slow'} · ${n}/min`;
-  return `… ${n} s …`;
-}
-
-/** Все ошибки прямо в тексте: бэкенд отдаёт место каждой (start/end в символах транскрипта). */
-function markTranscript(transcript: string, events: TimelineEvent[]): Piece[] {
-  const placed = events
-    .filter((e) => typeof e.start === 'number' && typeof e.end === 'number')
-    .sort((a, b) => a.start! - b.start! || a.end! - b.end!);
-  if (!placed.length) return markFillersByText(transcript, events);
-  const pieces: Piece[] = [];
-  let at = 0;
-  for (const e of placed) {
-    const start = Math.min(e.start!, transcript.length);
-    const end = Math.min(e.end!, transcript.length);
-    if (end > start && start < at) continue; // место уже занято другой отметкой — событие остаётся в списке ниже
-    if (start > at) {
-      pieces.push({ text: transcript.slice(at, start) });
-      at = start;
-    }
-    if (end > start) {
-      pieces.push({ text: transcript.slice(start, end), event: e });
-      at = end;
-    } else {
-      // значок не должен слипаться со словами: пробел ставим там, где его нет в тексте
-      const spaced = (ch: string | undefined) => (ch === undefined || /\s/.test(ch) ? '' : ' ');
-      pieces.push({ text: badge(e), event: e, badge: true, before: spaced(transcript[at - 1]), after: spaced(transcript[at]) });
-    }
-  }
-  pieces.push({ text: transcript.slice(at) });
-  return pieces;
-}
-
-/** Запасной путь для разборов без мест в тексте: помечает слова-паразиты поиском по тексту. */
-function markFillersByText(transcript: string, events: TimelineEvent[]): Piece[] {
-  const fillers = events.filter((e) => e.type === 'filler');
-  const words = [...new Set(fillers.map((e) => e.text.replace(/[«»"]/g, '').trim().toLowerCase()).filter(Boolean))];
-  if (!words.length) return [{ text: transcript }];
-  const escaped = words.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-  const re = new RegExp(`(?<![\\p{L}])(${escaped.join('|')})(?![\\p{L}])`, 'giu');
-  const queue = [...fillers];
-  const pieces: Piece[] = [];
-  let last = 0;
-  for (const m of transcript.matchAll(re)) {
-    const at = queue.findIndex((e) => e.text.toLowerCase().includes(m[0].toLowerCase()));
-    if (at < 0) continue;
-    const [event] = queue.splice(at, 1);
-    if (m.index > last) pieces.push({ text: transcript.slice(last, m.index) });
-    pieces.push({ text: m[0], event });
-    last = m.index + m[0].length;
-  }
-  pieces.push({ text: transcript.slice(last) });
-  return pieces;
-}
 
 export default function Result() {
   const { wide } = useLayout();
   const { result, delivery, juryAnswers, juryQuestions, pitchAudioUri, pitchVideoUri, pitchVideoOffset, mode, reviewOf } = useGame();
-  const player = useRef<PitchPlayerHandle>(null);
-
-  const pieces = useMemo(() => (delivery ? markTranscript(delivery.transcript, delivery.events) : []), [delivery]);
+  const transcript = useRef<TranscriptHandle>(null);
+  const video = useRef<PitchPlayerHandle>(null);
 
   if (!result) return <Redirect href="/" />;
-
-  /** Маркер в транскрипте или в списке событий: запись играет с этого места. */
-  const playFrom = (t: number) => player.current?.playFrom(t);
 
   const duration = delivery?.metrics.duration_sec ?? 0;
   const paddle = wide ? 150 : 88;
@@ -112,7 +34,6 @@ export default function Result() {
   const away = (delivery?.events ?? [])
     .filter((e) => e.type === 'gaze_off')
     .map((e) => ({ from: e.t, to: e.t + Number(e.text.match(/\d+(\.\d+)?/)?.[0] ?? 0) }));
-  const marks = (delivery?.events ?? []).map((e) => ({ t: e.t, color: MARK[e.type]?.color ?? c.markPause }));
   const contact = delivery?.metrics.gaze_on_ratio;
   const longest = Math.round(Math.max(0, ...away.map((s) => s.to - s.from)));
 
@@ -157,20 +78,19 @@ export default function Result() {
         {delivery && (
           <View style={[styles.columns, wide && styles.columnsWide]}>
             <View style={[styles.left, wide && styles.leftWide]}>
-            <Card flat style={[styles.recording, wide && styles.recordingWide]}>
-              <H3>Your recording</H3>
-              {pitchVideoUri ? (
-                <View style={[styles.watch, wide && styles.watchWide]}>
-                  <View style={wide ? styles.watchVideo : undefined}>
-                    <PitchVideo
-                      ref={player}
-                      uri={pitchVideoUri}
-                      offset={pitchVideoOffset}
-                      fallbackDuration={duration}
-                      marks={marks}
-                      notes={away.map((s) => ({ ...s, text: 'eyes off the room' }))}
-                    />
-                  </View>
+              {/* видео пока показываем только на телефоне; у него своя дорожка — только моменты, когда взгляд ушёл из зала */}
+              {!wide && pitchVideoUri ? (
+                <Card flat style={styles.recording}>
+                  <H3>Your recording</H3>
+                  <PitchVideo
+                    ref={video}
+                    uri={pitchVideoUri}
+                    offset={pitchVideoOffset}
+                    fallbackDuration={duration}
+                    marks={away.map((s) => ({ t: s.from, color: c.markGaze }))}
+                    notes={away.map((s) => ({ ...s, text: 'eyes off the room' }))}
+                    onPlay={() => transcript.current?.pause()}
+                  />
                   <View style={styles.contact}>
                     <Label>Eye contact</Label>
                     {typeof contact === 'number' ? (
@@ -178,68 +98,25 @@ export default function Result() {
                         <Text style={styles.contactValue}>{Math.round(contact * 100)}%</Text>
                         <Muted>
                           {away.length === 0
-                            ? 'You kept your eyes on the room the whole time. That is exactly how it should feel to them.'
-                            : `You looked away ${away.length === 1 ? 'once' : `${away.length} times`} for more than 3 seconds, the longest for ${longest} s. Keep the room in sight even while you think.`}
+                            ? 'You kept your eyes on the room the whole time.'
+                            : `You looked away ${away.length === 1 ? 'once' : `${away.length} times`} for more than 3 seconds, the longest for ${longest} s. The markers on the track show where.`}
                         </Muted>
                       </>
                     ) : (
-                      <Muted>Eye contact is not measured in the browser yet, so it is not part of your score. Watch the recording: are your eyes on the room?</Muted>
+                      <Muted>Eye contact is not measured yet, so the track has no markers. Watch the recording: are your eyes on the room?</Muted>
                     )}
-                    <Small>Tap a marker in the text to watch that moment, or drag the slider.</Small>
                   </View>
-                </View>
-              ) : pitchAudioUri ? (
-                <>
-                  <PitchPlayer ref={player} uri={pitchAudioUri} fallbackDuration={duration} marks={marks} />
-                  <Small>Tap a marker in the text to play from that moment, or drag the slider.</Small>
-                </>
-              ) : (
-                <Small>{reviewOf ? 'Recordings are not stored, so this round has only the transcript and the marks.' : 'The recording of this pitch is not available — markers only show the time.'}</Small>
-              )}
-            </Card>
-            <Card flat style={[styles.transcript, wide && styles.transcriptWide]}>
-              <View style={styles.transcriptHead}>
-                <H3 style={styles.transcriptTitle}>Transcript</H3>
-                <View style={styles.legend}>
-                  {[...LEGEND, ...(delivery.events.some((e) => e.type === 'profanity') ? (['profanity'] as const) : []), ...(away.length ? (['gaze_off'] as const) : [])].map((t) => (
-                    <View key={t} style={styles.legendItem}>
-                      <View style={[styles.swatch, { backgroundColor: MARK[t].color }]} />
-                      <Text style={styles.legendText}>{MARK[t].name}</Text>
-                    </View>
-                  ))}
-                </View>
-              </View>
-              <Text style={styles.transcriptText}>
-                {pieces.map((p, i) =>
-                  p.event ? (
-                    <Text key={i}>
-                      {p.before}
-                    <Text
-                      onPress={() => playFrom(p.event!.t)}
-                      style={[styles.marked, p.badge && styles.badge, { backgroundColor: MARK[p.event.type]?.color ?? c.markPause }]}
-                      accessibilityLabel={p.event.text}>
-                      {p.badge ? `\u00A0${p.text.replace(/ /g, '\u00A0')}\u00A0` : p.text}
-                    </Text>
-                      {p.after}
-                    </Text>
-                  ) : (
-                    p.text
-                  ),
-                )}
-              </Text>
-
-              {delivery.events.length > 0 && (
-                <View style={styles.events}>
-                  {delivery.events.map((e, i) => (
-                    <Pressable key={i} accessibilityRole="button" onPress={() => playFrom(e.t)} style={[styles.event, { backgroundColor: MARK[e.type]?.color ?? c.markPause }]}>
-                      <Text style={styles.eventTime}>{formatTime(e.t)}</Text>
-                      <Text style={styles.eventText}>{e.text}</Text>
-                    </Pressable>
-                  ))}
-                </View>
-              )}
-
-            </Card>
+                </Card>
+              ) : null}
+              <Transcript
+                ref={transcript}
+                delivery={delivery}
+                audioUri={pitchAudioUri}
+                duration={duration}
+                wide={wide}
+                noRecording={reviewOf ? 'Recordings are not stored, so this round has only the transcript and the marks.' : 'The recording of this pitch is not available — markers only show the time.'}
+                onPlay={() => video.current?.pause()}
+              />
             </View>
 
             <View style={[styles.side, wide && styles.sideWide]}>
@@ -317,27 +194,8 @@ const styles = StyleSheet.create({
   left: { gap: 20 },
   leftWide: { flex: 1.5, gap: 24 },
   recording: { borderRadius: 22, gap: 14 },
-  recordingWide: { padding: 30, borderRadius: 24 },
-  watch: { gap: 14 },
-  watchWide: { flexDirection: 'row', alignItems: 'center', gap: 24 },
-  watchVideo: { flex: 1.2 },
-  contact: { flex: 1, gap: 6 },
+  contact: { gap: 6 },
   contactValue: { fontFamily: font.display, fontSize: 48, lineHeight: 54, color: c.ink },
-  transcript: { borderRadius: 22, gap: 14 },
-  transcriptWide: { padding: 30, borderRadius: 24 },
-  transcriptHead: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 12 },
-  transcriptTitle: { flexGrow: 1 },
-  legend: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, maxWidth: '100%' },
-  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  swatch: { width: 14, height: 14, borderRadius: 4, borderWidth: 2, borderColor: c.ink },
-  legendText: { fontFamily: font.semi, fontSize: 13, color: c.ink },
-  transcriptText: { fontFamily: font.body, fontSize: 18, lineHeight: 32, color: c.ink },
-  marked: { fontFamily: font.semi, borderRadius: 6 },
-  badge: { fontFamily: font.bold, fontSize: 13, letterSpacing: 0.2 },
-  events: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  event: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 10, borderWidth: 2, borderColor: c.ink, paddingHorizontal: 10, minHeight: 40, maxWidth: '100%' },
-  eventTime: { fontFamily: font.bold, fontSize: 14, color: c.ink, fontVariant: ['tabular-nums'] },
-  eventText: { fontFamily: font.medium, fontSize: 14, color: c.ink, flexShrink: 1 },
   side: { gap: 20 },
   sideWide: { flex: 1, gap: 24 },
   answer: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },

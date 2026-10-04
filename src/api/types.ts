@@ -41,8 +41,13 @@ export type TimelineEvent = {
   end?: number | null;
 };
 
+/** Слово расшифровки: где стоит в transcript (символы) и когда звучит в записи (секунды). */
+export type WordMark = { start: number; end: number; t: number; t_end: number };
+
 export type Delivery = {
   transcript: string;
+  /** Слова со временем — по ним в разборе подсвечивается текущее слово. У старых раундов их нет. */
+  words?: WordMark[];
   scores: {
     content: { total: number; criteria: { name: string; score: number; quote: string }[] };
     delivery: {
@@ -130,6 +135,7 @@ export type AuthSession = { access_token: string; user: User };
 export type HistoryRound = {
   id: string;
   mode: string;
+  difficulty?: string;
   title: string;
   created_at: string;
   total: number;
@@ -180,3 +186,26 @@ export type RoundReview = {
   jury_questions: JuryQuestion[];
   jury_answers: (JuryAnswer & { question_id: string })[];
 };
+
+/** Темп, которым игрок хочет говорить: от него зависит, что зал считает «слишком медленно». */
+export type Pace = 'slow' | 'normal' | 'fast';
+
+/** Регистрация по почте: дальше нужен код из письма. dev_code приходит, только если почта на сервере не настроена. */
+export type Signup = {
+  email: string;
+  sent: boolean;
+  dev_code: string | null;
+  /** Подтверждение почты на сервере выключено — вход уже выполнен, код не нужен. */
+  access_token?: string | null;
+  user?: User | null;
+};
+
+/** Уровень сложности: чем выше, тем глубже вопросы жюри, строже оценка ответов и жёстче зал. */
+export type Difficulty = 'easy' | 'medium' | 'hard';
+
+export type FitSlide = { n: number; title: string; kind: 'talk' | 'demo'; text: string };
+/** Питч, разложенный по слайдам презентации. */
+export type FitSlides = { slides: FitSlide[]; text: string };
+
+/** Файл презентации из системного выбора файлов: в браузере — File, в приложении — uri. */
+export type PickedFile = { uri: string; name: string; mimeType?: string; file?: File };

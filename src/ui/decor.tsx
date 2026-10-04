@@ -196,7 +196,8 @@ export function Wheel({ size = 240, pointer = true }: { size?: number; pointer?:
           <Path key={i} d={`M100 100 L${from} A100 100 0 0 1 ${p[(i + 1) % 8]} Z`} fill={fills[i]} />
         ))}
         <Circle cx={100} cy={100} r={16} fill={c.paper} />
-        {pointer ? <Path d="M100 14 L86 -16 H114 Z" fill={c.ink} /> : null}
+        {/* у стрелки светлая обводка: на тёмном секторе колеса чёрный треугольник иначе сливается с ним */}
+        {pointer ? <Path d="M100 16 L84 -16 H116 Z" fill={c.ink} stroke={c.paper} strokeWidth={4} /> : null}
       </G>
     </Svg>
   );
