@@ -24,13 +24,14 @@ export function GlassSurface({ children, style, round = 999 }: { children?: Reac
   return <View style={[{ borderRadius: round }, web ? [frosted('rgba(255,250,238,0.62)'), styles.webEdge] : styles.solid, style]}>{children}</View>;
 }
 
-export type GlassIcon = 'back' | 'home' | 'close';
+export type GlassIcon = 'back' | 'home' | 'close' | 'globe';
 
 function Icon({ name, color = c.ink }: { name: GlassIcon; color?: string }) {
   const d = {
     back: 'M15 5l-7 7 7 7',
     home: 'M4 11l8-7 8 7M6 10v9h4v-5h4v5h4v-9',
     close: 'M6 6l12 12M18 6L6 18',
+    globe: 'M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18M3 12h18M12 3c2.5 2.6 3.6 5.6 3.6 9s-1.1 6.4-3.6 9c-2.5-2.6-3.6-5.6-3.6-9s1.1-6.4 3.6-9',
   }[name];
   return (
     <Svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round">

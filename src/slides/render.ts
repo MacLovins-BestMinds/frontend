@@ -1,4 +1,5 @@
 import type { PickedFile } from '@/api/types';
+import { translate } from '@/i18n';
 
 /** Слайд презентации как картинка: адрес и отношение ширины к высоте. */
 export type Slide = { uri: string; ratio: number };
@@ -8,5 +9,5 @@ export type Slide = { uri: string; ratio: number };
  * показ слайдов есть только в браузере (render.web.ts).
  */
 export async function renderSlides(_file: PickedFile): Promise<Slide[]> {
-  throw new Error('Slides on stage work in the browser for now.');
+  throw new Error(translate('common', 'errSlidesApp'));
 }

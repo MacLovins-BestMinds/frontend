@@ -6,8 +6,9 @@ import { api, mediaUrl } from '@/api/client';
 import type { JuryQuestion } from '@/api/types';
 import { playUrl, type Playback } from '@/audio/playback';
 import { useRecorder } from '@/audio/useRecorder';
-import { JUROR_NAME, c, font, outline, shadow } from '@/design/theme';
+import { c, font, jurorName, outline, shadow } from '@/design/theme';
 import { useLayout } from '@/hooks/useLayout';
+import { useT } from '@/i18n';
 import { JURORS, JuryTable } from '@/scene/AudienceScene';
 import { useGame } from '@/store/game';
 import { AppHeader } from '@/ui/AppHeader';
@@ -16,10 +17,12 @@ import { Pending } from '@/ui/Pending';
 import { Button, Card, Container, ErrorText, H1, H3, Label, Muted, P, Page, Small } from '@/ui/primitives';
 
 const ANSWER_SEC = 30;
-const TIPS = ['Answer the question first, explain after.', 'One number beats three adjectives.', 'Thirty seconds: do not retell the pitch.'];
+const TIPS = ['tip1', 'tip2', 'tip3'] as const;
 type Phase = 'loading' | 'question' | 'answering' | 'sending' | 'comment' | 'finishing';
 
 export default function Jury() {
+  const t = useT('jury');
+  const tc = useT('common');
   const { wide } = useLayout();
   const { user, round, difficulty, addJuryAnswer, setJuryQuestions, setResult } = useGame();
   const recorder = useRecorder();
@@ -48,7 +51,7 @@ export default function Jury() {
         setJuryQuestions(q);
         setPhase('question');
       })
-      .catch((e: Error) => setError(`Could not load the questions: ${e.message}`));
+      .catch((e: Error) => setError(t('errLoad', { message: e.message })));
   };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(load, [round]);
@@ -102,7 +105,7 @@ export default function Jury() {
       setComment({ score: answer.score, text: answer.comment });
       setPhase('comment');
     } catch (e) {
-      setError(`Could not skip the question: ${(e as Error).message}`);
+      setError(t('errSkip', { message: (e as Error).message }));
       setPhase('question');
     } finally {
       sending.current = false;
@@ -128,10 +131,10 @@ export default function Jury() {
       if (message.startsWith('422')) {
         // запись не читается — повторная отправка того же файла не поможет, записываем заново
         answerUri.current = null;
-        setError('The answer was not recorded. Please record it again.');
+        setError(t('notRecorded'));
         setPhase('question');
       } else {
-        setError(`Could not send the answer: ${message}`);
+        setError(t('errSend', { message }));
         setPhase('comment');
       }
     } finally {
@@ -171,7 +174,7 @@ export default function Jury() {
       setResult(await api.finish(round.round_id));
       router.replace('/result');
     } catch (e) {
-      setError(`Could not compute the result: ${(e as Error).message}`);
+      setError(t('errResult', { message: (e as Error).message }));
       setPhase('comment');
     }
   };
@@ -183,11 +186,11 @@ export default function Jury() {
 
   const actions = (
     <>
-      {phase === 'loading' && error !== '' && <Button title="Try again" variant="secondary" onPress={load} />}
+      {phase === 'loading' && error !== '' && <Button title={tc('tryAgain')} variant="secondary" onPress={load} />}
       {phase === 'answering' && (
         <View style={styles.countdown}>
           <Text style={styles.countdownValue}>{Math.ceil(left)}</Text>
-          <Text style={styles.countdownLabel}>seconds to answer</Text>
+          <Text style={styles.countdownLabel}>{t('secondsLeft', { n: Math.ceil(left) })}</Text>
         </View>
       )}
       {phase === 'comment' && comment && (
@@ -198,16 +201,16 @@ export default function Jury() {
       )}
       <ErrorText>{error}</ErrorText>
       {phase === 'question' && audioBlocked && question?.audio_url && (
-        <Button title="Play the question" variant="secondary" onPress={() => playQuestion(mediaUrl(question.audio_url))} />
+        <Button title={t('playQuestion')} variant="secondary" onPress={() => playQuestion(mediaUrl(question.audio_url))} />
       )}
-      {phase === 'question' && <Button title="Answer (up to 30 seconds)" onPress={startAnswer} />}
+      {phase === 'question' && <Button title={t('answer')} onPress={startAnswer} />}
       {(phase === 'question' || phase === 'answering') && (
-        <Button title="Skip this question (0 points)" variant="secondary" size="sm" onPress={skip} style={styles.skip} />
+        <Button title={t('skip')} variant="secondary" size="sm" onPress={skip} style={styles.skip} />
       )}
-      {(phase === 'answering' || phase === 'sending') && <Button title="Done answering" loading={phase === 'sending'} onPress={sendAnswer} />}
+      {(phase === 'answering' || phase === 'sending') && <Button title={t('done')} loading={phase === 'sending'} onPress={sendAnswer} />}
       {(phase === 'comment' || phase === 'finishing') && (
         <Button
-          title={!comment && answerUri.current ? 'Send the answer again' : index + 1 < questions.length ? 'Next question' : 'See the review'}
+          title={!comment && answerUri.current ? t('sendAgain') : index + 1 < questions.length ? t('nextQuestion') : t('seeReview')}
           loading={phase === 'finishing'}
           onPress={next}
         />
@@ -218,7 +221,7 @@ export default function Jury() {
   /** Протокол жюри: кто уже спросил и что поставил. */
   const sheet = (
     <Card flat style={styles.sheet}>
-      <Label>Score sheet</Label>
+      <Label>{t('sheet')}</Label>
       {JURORS.map((id, i) => {
         const asked = questions.findIndex((q) => q.juror === id);
         const score = scores[id];
@@ -229,8 +232,8 @@ export default function Jury() {
             <View style={[styles.sheetDot, now && { backgroundColor: c.orange }, score !== undefined && { backgroundColor: c.ink }]}>
               <Text style={[styles.sheetDotText, score !== undefined && { color: c.onInk }]}>{asked >= 0 ? asked + 1 : i + 1}</Text>
             </View>
-            <Text style={styles.sheetName}>{JUROR_NAME[id]}</Text>
-            <Text style={[styles.sheetState, score !== undefined && styles.sheetScore]}>{score !== undefined ? score : now ? 'asking now' : 'up next'}</Text>
+            <Text style={styles.sheetName}>{jurorName(id)}</Text>
+            <Text style={[styles.sheetState, score !== undefined && styles.sheetScore]}>{score !== undefined ? score : now ? t('askingNow') : t('upNext')}</Text>
           </View>
         );
       })}
@@ -239,10 +242,10 @@ export default function Jury() {
 
   const tips = (
     <Card tone="accent" style={styles.tips}>
-      <H3>How to answer</H3>
+      <H3>{t('howToAnswer')}</H3>
       {TIPS.map((tip, i) => (
         <P key={tip} style={styles.tip}>
-          {i + 1}. {tip}
+          {i + 1}. {t(tip)}
         </P>
       ))}
     </Card>
@@ -253,8 +256,8 @@ export default function Jury() {
       <AppHeader glass />
       <Container style={styles.main}>
         <View style={styles.head}>
-          <H1 style={!wide && styles.titleNarrow}>Jury questions</H1>
-          <Muted>Three people at the table, one question each. You have thirty seconds per answer.</Muted>
+          <H1 style={!wide && styles.titleNarrow}>{t('title')}</H1>
+          <Muted>{t('lead')}</Muted>
         </View>
         <View style={[styles.columns, wide && styles.columnsWide]}>
           <View style={[styles.left, wide && styles.leftWide]}>
@@ -266,13 +269,13 @@ export default function Jury() {
                 <View style={[styles.boothTable, !wide && styles.boothTableNarrow]}>
                   <JuryTable speaking={speaking} />
                   {phase === 'question' && speakerAt >= 0 && (
-                    <Bubble text="question!" dark tilt={-6} style={{ top: wide ? -6 : -24, left: `${8 + speakerAt * 31}%` }} />
+                    <Bubble text={t('bubble')} dark tilt={-6} style={{ top: wide ? -6 : -24, left: `${8 + speakerAt * 31}%` }} />
                   )}
                 </View>
                 <View style={styles.names}>
                   {JURORS.map((id) => (
                     <Text key={id} style={[styles.name, speaking === id && styles.nameOn]}>
-                      {JUROR_NAME[id]}
+                      {jurorName(id)}
                     </Text>
                   ))}
                 </View>
@@ -281,20 +284,18 @@ export default function Jury() {
 
             {phase === 'loading' && !error && (
               <Pending
-                title="The jury is conferring"
-                steps={['Your pitch is scored', 'The jury reads your pitch and records three questions', 'You answer — 30 seconds each']}
+                title={t('conferring')}
+                steps={[t('stepScored'), t('stepQuestions'), t('stepAnswer')]}
                 current={1}
-                note="Usually 10–20 seconds. The first question plays as soon as it is ready."
+                note={t('conferringNote')}
               />
             )}
             {phase === 'finishing' && (
-              <Pending title="Adding up your result" steps={['Your answers are scored', 'Final score and rank']} current={1} />
+              <Pending title={t('addingUp')} steps={[t('stepAnswers'), t('stepFinal')]} current={1} />
             )}
             {question && phase !== 'finishing' && (
               <Card style={styles.questionCard}>
-                <Label>
-                  Question {index + 1} of {questions.length} · {JUROR_NAME[question.juror] ?? question.juror}
-                </Label>
+                <Label>{t('questionOf', { n: index + 1, total: questions.length, juror: jurorName(question.juror) })}</Label>
                 <H3 style={[styles.question, wide && styles.questionWide]}>{question.text}</H3>
               </Card>
             )}
@@ -305,7 +306,7 @@ export default function Jury() {
             {wide && actions}
             {sheet}
             {tips}
-            {wide && <Small>The countdown starts when you press Answer. Each answer is scored on its own.</Small>}
+            {wide && <Small>{t('countdownNote')}</Small>}
           </View>
         </View>
       </Container>

@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } fro
 import Svg, { Path } from 'react-native-svg';
 
 import { c, font, outline, shadow } from '@/design/theme';
+import { useT } from '@/i18n';
 import { CameraIcon, DashedRing, Flower } from '@/ui/decor';
 
 type FrameProps = { size?: number; tilt?: number; style?: StyleProp<ViewStyle>; children?: ReactNode; onFlip?: () => void };
@@ -16,6 +17,7 @@ export function Frame({ size = 136, tilt = -4, style, children, onFlip }: FrameP
   const stitch = Math.round(size * 0.87);
   const lens = Math.round(size * 0.74);
   const button = Math.max(36, Math.round(size * 0.2));
+  const t = useT('common');
   return (
     <View style={[styles.box, { width: size, height: size }, style]}>
       <View style={[styles.frame, shadow(4), { width: size, height: size, borderRadius: size / 2, transform: [{ rotate: `${tilt}deg` }] }]}>
@@ -30,7 +32,7 @@ export function Frame({ size = 136, tilt = -4, style, children, onFlip }: FrameP
       {onFlip ? (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Switch camera"
+          accessibilityLabel={t('switchCamera')}
           onPress={onFlip}
           hitSlop={8}
           style={[styles.flip, { width: button, height: button, borderRadius: button / 2 }]}>
@@ -44,11 +46,13 @@ export function Frame({ size = 136, tilt = -4, style, children, onFlip }: FrameP
   );
 }
 
-export function CameraPlaceholder({ text = 'camera' }: { text?: string }) {
+/** Заглушка вместо видео: off — камеры нет или доступ запрещён. */
+export function CameraPlaceholder({ off = false }: { off?: boolean }) {
+  const t = useT('common');
   return (
     <>
       <CameraIcon size={24} />
-      <Text style={styles.placeholder}>{text}</Text>
+      <Text style={styles.placeholder}>{off ? t('noCamera') : t('camera')}</Text>
     </>
   );
 }

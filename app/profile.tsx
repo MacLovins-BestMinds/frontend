@@ -5,8 +5,10 @@ import Svg, { Circle, Line, Path, Text as SvgText } from 'react-native-svg';
 
 import { api } from '@/api/client';
 import type { HistoryRound, Progress, SkillTrend } from '@/api/types';
-import { c, font, outline, shadow } from '@/design/theme';
+import { c, font, formatDate, formatNumber, outline, shadow } from '@/design/theme';
 import { useLayout } from '@/hooks/useLayout';
+import { translate, useLang, useT } from '@/i18n';
+import { rankLabel } from '@/i18n/ranks';
 import { useGame } from '@/store/game';
 import { AppHeader } from '@/ui/AppHeader';
 import { GlassButton } from '@/ui/Glass';
@@ -15,18 +17,20 @@ import { DashedLine, Spark, Stamp, TrendArrow } from '@/ui/decor';
 import { levelName } from '@/ui/LevelPicker';
 import { Button, Card, Chip, Container, ErrorText, H3, Label, Muted, P, Page } from '@/ui/primitives';
 
+// пороги званий; названия на графике — в словаре common (rank.*)
 const RANKS = [
-  { title: 'Novice', from: 0 },
-  { title: 'Speaker', from: 40 },
-  { title: 'Pitcher', from: 60 },
-  { title: 'Orator', from: 75 },
-  { title: 'Legend', from: 88 },
-];
-const MODE: Record<string, string> = { training: 'Training', daily: 'Topic of the day', own: 'Own pitch', warmup: 'Warm-up' };
+  { id: 'novice', from: 0 },
+  { id: 'speaker', from: 40 },
+  { id: 'pitcher', from: 60 },
+  { id: 'orator', from: 75 },
+  { id: 'legend', from: 88 },
+] as const;
+const MODES = ['training', 'daily', 'own', 'warmup'] as const;
 const CHART_ROUNDS = 30;
 
-const day = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-const num = (v: number | null, digits = 0) => (v === null ? '—' : v.toFixed(digits));
+const day = (iso: string) => formatDate(iso, { day: 'numeric', month: 'short' });
+const num = (v: number | null, digits = 0) => (v === null ? '—' : formatNumber(v, digits));
+const isMode = (mode: string): mode is (typeof MODES)[number] => (MODES as readonly string[]).includes(mode);
 
 /** Стало лучше или хуже: для паразитов и пауз «меньше — лучше», темп оценивается по коридору, а не по росту. */
 function verdict(t: SkillTrend): 'good' | 'bad' | 'same' {
@@ -35,36 +39,40 @@ function verdict(t: SkillTrend): 'good' | 'bad' | 'same' {
 }
 
 function Delta({ trend }: { trend: SkillTrend }) {
-  if (trend.delta === null) return <Text style={styles.deltaNone}>not enough rounds to compare</Text>;
+  const t = useT('profile');
+  if (trend.delta === null) return <Text style={styles.deltaNone}>{t('notEnough')}</Text>;
   const v = verdict(trend);
   const sign = trend.delta > 0 ? '+' : '';
   return (
     <Text style={[styles.delta, v === 'good' && { color: c.good }, v === 'bad' && { color: c.bad }]}>
-      {sign}
-      {trend.delta.toFixed(1)} vs the 5 rounds before
+      {t('delta', { delta: sign + formatNumber(trend.delta, 1) })}
     </Text>
   );
 }
 
 /** Баллы раундов от старых к новым и пороги званий — видно, к какому званию идёт линия. */
 function ScoreChart({ rounds }: { rounds: HistoryRound[] }) {
+  const t = useT('profile');
+  const tc = useT('common');
   const [width, setWidth] = useState(0);
   const height = 230;
-  const pad = { left: 30, right: 70, top: 14, bottom: 26 };
+  // справа — подписи порогов званий: поле под самую длинную на текущем языке
+  const thresholds = RANKS.slice(1).map((r) => ({ ...r, label: tc(`rank.${r.id}`) }));
+  const pad = { left: 30, right: Math.max(70, 20 + Math.max(...thresholds.map((r) => r.label.length)) * 6.5), top: 14, bottom: 26 };
   const points = [...rounds].slice(0, CHART_ROUNDS).reverse();
   const x = (i: number) => pad.left + (points.length <= 1 ? (width - pad.left - pad.right) / 2 : (i / (points.length - 1)) * (width - pad.left - pad.right));
   const y = (v: number) => pad.top + (1 - v / 100) * (height - pad.top - pad.bottom);
   const line = points.map((r, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)} ${y(r.total).toFixed(1)}`).join(' ');
   return (
-    <View onLayout={(e) => setWidth(e.nativeEvent.layout.width)} style={{ height }} accessibilityRole="image" accessibilityLabel={`Scores of your last ${points.length} rounds`}>
+    <View onLayout={(e) => setWidth(e.nativeEvent.layout.width)} style={{ height }} accessibilityRole="image" accessibilityLabel={t('chart', { n: points.length })}>
       {width > 0 && (
         <Svg width={width} height={height}>
-          {RANKS.slice(1).map((r) => (
-            <Line key={r.title} x1={pad.left} x2={width - pad.right + 6} y1={y(r.from)} y2={y(r.from)} stroke={c.onInkMuted} strokeWidth={2} strokeDasharray="6 6" />
+          {thresholds.map((r) => (
+            <Line key={r.id} x1={pad.left} x2={width - pad.right + 6} y1={y(r.from)} y2={y(r.from)} stroke={c.onInkMuted} strokeWidth={2} strokeDasharray="6 6" />
           ))}
-          {RANKS.slice(1).map((r) => (
-            <SvgText key={r.title} x={width - pad.right + 12} y={y(r.from) + 4} fontFamily={font.semi} fontSize={12} fill={c.graphite}>
-              {r.title}
+          {thresholds.map((r) => (
+            <SvgText key={r.id} x={width - pad.right + 12} y={y(r.from) + 4} fontFamily={font.semi} fontSize={12} fill={c.graphite}>
+              {r.label}
             </SvgText>
           ))}
           {[0, 50, 100].map((v) => (
@@ -111,6 +119,9 @@ function Sparkline({ values }: { values: number[] }) {
 }
 
 export default function Profile() {
+  const t = useT('profile');
+  const tc = useT('common');
+  const lang = useLang();
   const { wide } = useLayout();
   const user = useGame((s) => s.user);
   const signOut = useGame((s) => s.signOut);
@@ -119,13 +130,14 @@ export default function Profile() {
   const [error, setError] = useState('');
   const [opening, setOpening] = useState<string | null>(null);
 
+  // советы и названия навыков сервер присылает на языке интерфейса — при смене языка загружаем заново
   useEffect(() => {
     if (!user) return;
     api
       .progress()
       .then(setProgress)
-      .catch((e: Error) => setError(`Could not load your progress: ${e.message}`));
-  }, [user]);
+      .catch((e: Error) => setError(translate('profile', 'errLoad', { message: e.message })));
+  }, [user, lang]);
 
   if (!user) return <Redirect href="/" />;
 
@@ -136,7 +148,7 @@ export default function Profile() {
       openReview(await api.roundReview(round.id));
       router.push('/result');
     } catch (e) {
-      setError(`Could not open the round: ${(e as Error).message}`);
+      setError(t('errOpen', { message: (e as Error).message }));
     } finally {
       setOpening(null);
     }
@@ -144,7 +156,8 @@ export default function Profile() {
 
   const rank = progress?.rank ?? user.rank;
   const current = [...RANKS].reverse().find((r) => (progress?.rank_score ?? 0) >= r.from) ?? RANKS[0];
-  const next = progress?.next_rank ? RANKS.find((r) => r.title === progress.next_rank?.title) : undefined;
+  // следующее звание — по порогу, а не по названию: сервер может прислать его на другом языке
+  const next = progress?.next_rank ? RANKS[RANKS.indexOf(current) + 1] : undefined;
   const toNext = next ? Math.max(0, Math.min(1, ((progress?.rank_score ?? 0) - current.from) / (next.from - current.from))) : 1;
   const history = progress?.history ?? [];
   const series = (key: keyof HistoryRound) =>
@@ -157,13 +170,13 @@ export default function Profile() {
   return (
     <Page sticky>
       <AppHeader glass back={() => goBack()}>
-        <GlassButton title="Sign out" onPress={() => (signOut(), router.replace('/'))} />
+        <GlassButton title={t('signOut')} onPress={() => (signOut(), router.replace('/'))} />
       </AppHeader>
       <Container style={[styles.main, !wide && styles.mainNarrow]}>
         <View style={[styles.row, !wide && styles.column]}>
           <View style={[styles.hero, wide && styles.heroWide]}>
             <View style={styles.heroText}>
-              <Label style={{ color: c.orange }}>Your progress</Label>
+              <Label style={{ color: c.orange }}>{t('yourProgress')}</Label>
               <Text style={[styles.nick, !wide && { fontSize: 30, lineHeight: 36 }]} numberOfLines={1}>
                 {user.nick}
               </Text>
@@ -173,22 +186,22 @@ export default function Profile() {
                     <View style={[styles.rankFill, { width: `${toNext * 100}%` }]} />
                   </View>
                   <Text style={styles.heroNote}>
-                    {progress.next_rank.points_needed.toFixed(0)} more points on average to become {progress.next_rank.title}. The rank follows the average of your last five rounds — now {progress.rank_score.toFixed(0)}.
+                    {t('nextRank', { n: Math.round(progress.next_rank.points_needed), rank: rankLabel(tc, progress.next_rank.title), score: Math.round(progress.rank_score) })}
                   </Text>
                 </>
               ) : progress ? (
-                <Text style={styles.heroNote}>The highest rank. Keep the average of your last five rounds above 88 to stay a Legend.</Text>
+                <Text style={styles.heroNote}>{t('topRank')}</Text>
               ) : null}
             </View>
-            <Stamp title={rank.title} caption="rank" trend={rank.trend} size={wide ? 140 : 104} color={c.orange} tilt={-9} />
+            <Stamp title={rankLabel(tc, rank.title)} caption={t('rank')} trend={rank.trend} size={wide ? 140 : 104} color={c.orange} tilt={-9} />
           </View>
 
           <View style={[styles.tiles, wide && styles.tilesWide]}>
             {[
-              { label: 'Rounds played', value: progress ? String(progress.rounds_total) : '…', note: progress ? `${progress.minutes_total.toFixed(0)} min on stage` : '' },
-              { label: 'Average score', value: progress?.rounds_total ? progress.average.toFixed(0) : '—', note: 'all rounds' },
-              { label: 'Best round', value: progress?.rounds_total ? progress.best.toFixed(0) : '—', note: 'out of 100' },
-              { label: 'Day streak', value: progress ? String(progress.streak_days) : '…', note: progress?.streak_days ? 'play today to keep it' : 'play today to start one' },
+              { label: t('played'), value: progress ? String(progress.rounds_total) : '…', note: progress ? t('onStage', { n: formatNumber(progress.minutes_total) }) : '' },
+              { label: t('average'), value: progress?.rounds_total ? progress.average.toFixed(0) : '—', note: t('allRounds') },
+              { label: t('best'), value: progress?.rounds_total ? progress.best.toFixed(0) : '—', note: t('outOf') },
+              { label: t('streak'), value: progress ? String(progress.streak_days) : '…', note: progress?.streak_days ? t('keepStreak') : t('startStreak') },
             ].map((t, i) => (
               <View key={t.label} style={[styles.tile, i === 3 && progress?.streak_days ? styles.tileAccent : null, shadow(4)]}>
                 <Text style={styles.tileLabel}>{t.label}</Text>
@@ -204,9 +217,9 @@ export default function Profile() {
 
         {progress && progress.rounds_total === 0 && (
           <Card tone="accent" style={styles.empty}>
-            <H3>No rounds yet</H3>
-            <P>Play one round and this page fills up: your scores, pace, filler words and what to work on next.</P>
-            <Button title="Spin the wheel" variant="ink" onPress={() => router.push('/wheel')} style={styles.start} />
+            <H3>{t('noRounds')}</H3>
+            <P>{t('noRoundsText')}</P>
+            <Button title={t('spin')} variant="ink" onPress={() => router.push('/wheel')} style={styles.start} />
           </Card>
         )}
 
@@ -214,12 +227,12 @@ export default function Profile() {
           <>
             <View style={[styles.row, !wide && styles.column]}>
               <Card flat style={[styles.card, wide && { flex: 1.6 }]}>
-                <H3>Scores round by round</H3>
-                <Muted>Dashed lines are the rank thresholds. The line is your total score, oldest on the left.</Muted>
+                <H3>{t('scores')}</H3>
+                <Muted>{t('scoresNote')}</Muted>
                 <ScoreChart rounds={history} />
               </Card>
               <Card tone="accent" style={[styles.card, wide && { flex: 1 }]}>
-                <H3>What the numbers say</H3>
+                <H3>{t('numbers')}</H3>
                 {progress.insights.map((insight) => (
                   <View key={insight.title} style={styles.insight}>
                     <View style={[styles.insightIcon, insight.kind === 'focus' && { backgroundColor: c.ink }]}>
@@ -231,14 +244,14 @@ export default function Profile() {
                     </View>
                   </View>
                 ))}
-                {progress.insights.length === 0 && <P>Play a few more rounds — advice needs something to compare.</P>}
+                {progress.insights.length === 0 && <P>{t('moreRounds')}</P>}
               </Card>
             </View>
 
             <View style={[styles.row, !wide && styles.column]}>
               <Card flat style={[styles.card, wide && { flex: 1 }]}>
-                <H3>Scores by part</H3>
-                <Muted>Average of your last five rounds.</Muted>
+                <H3>{t('byPart')}</H3>
+                <Muted>{t('lastFive')}</Muted>
                 {progress.skills.map((s) => (
                   <View key={s.key} style={styles.skill}>
                     <View style={styles.skillHead}>
@@ -253,8 +266,8 @@ export default function Profile() {
                 ))}
               </Card>
               <Card flat style={[styles.card, wide && { flex: 1.3 }]}>
-                <H3>Speech habits</H3>
-                <Muted>Average of your last five rounds; the line shows your last ten.</Muted>
+                <H3>{t('habits')}</H3>
+                <Muted>{t('habitsNote')}</Muted>
                 <View style={styles.habits}>
                   {progress.habits.map((h) => (
                     <View key={h.key} style={styles.habit}>
@@ -264,7 +277,7 @@ export default function Profile() {
                         <Text style={styles.habitUnit}>{h.unit}</Text>
                       </View>
                       <Sparkline values={series(h.key as keyof HistoryRound)} />
-                      {h.better === 'range' ? <Text style={styles.deltaNone}>the room follows best at 120–160</Text> : <Delta trend={h} />}
+                      {h.better === 'range' ? <Text style={styles.deltaNone}>{t('paceRange')}</Text> : <Delta trend={h} />}
                     </View>
                   ))}
                 </View>
@@ -272,10 +285,10 @@ export default function Profile() {
             </View>
 
             <Card flat style={styles.card}>
-              <H3>All your pitches</H3>
-              <Muted>Tap a round to open its review and listen to your pitch again.</Muted>
+              <H3>{t('all')}</H3>
+              <Muted>{t('allNote')}</Muted>
               {history.map((r) => (
-                <Pressable key={r.id} accessibilityRole="button" accessibilityLabel={`Open the review of ${r.title}`} onPress={() => open(r)} style={({ pressed }) => [styles.round, pressed && { backgroundColor: c.cream }]}>
+                <Pressable key={r.id} accessibilityRole="button" accessibilityLabel={t('open', { title: r.title })} onPress={() => open(r)} style={({ pressed }) => [styles.round, pressed && { backgroundColor: c.cream }]}>
                   <DashedLine color={c.onInkMuted} style={styles.roundRule} />
                   <View style={styles.roundScore}>
                     <Text style={styles.roundTotal}>{r.total.toFixed(0)}</Text>
@@ -285,16 +298,16 @@ export default function Profile() {
                       {r.title}
                     </Text>
                     <Text style={styles.roundMeta}>
-                      {day(r.created_at)} · {MODE[r.mode] ?? r.mode} · {levelName(r.difficulty ?? 'easy')}
-                      {r.wpm ? ` · ${r.wpm} words/min` : ''}
-                      {r.fillers_per_min !== null ? ` · ${r.fillers_per_min.toFixed(1)} fillers/min` : ''}
+                      {day(r.created_at)} · {isMode(r.mode) ? tc(`mode.${r.mode}`) : r.mode} · {levelName(r.difficulty ?? 'easy')}
+                      {r.wpm ? ` · ${t('wpm', { n: r.wpm })}` : ''}
+                      {r.fillers_per_min !== null ? ` · ${t('fillers', { n: formatNumber(r.fillers_per_min, 1) })}` : ''}
                     </Text>
                   </View>
                   {wide && (
                     <View style={styles.roundParts}>
-                      <Chip title={`Content ${r.content.toFixed(0)}`} />
-                      <Chip title={`Delivery ${r.delivery.toFixed(0)}`} />
-                      {r.mode !== 'warmup' && <Chip title={`Jury ${r.jury.toFixed(0)}`} />}
+                      <Chip title={t('content', { n: r.content.toFixed(0) })} />
+                      <Chip title={t('delivery', { n: r.delivery.toFixed(0) })} />
+                      {r.mode !== 'warmup' && <Chip title={t('jury', { n: r.jury.toFixed(0) })} />}
                     </View>
                   )}
                   {opening === r.id ? <ActivityIndicator color={c.ink} /> : <TrendArrow trend="flat" size={20} color={c.ink} />}

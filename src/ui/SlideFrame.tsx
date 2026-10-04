@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { Image, Platform, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import { c, font, outline, shadow } from '@/design/theme';
+import { useT } from '@/i18n';
 import type { Slide } from '@/slides/render';
 
 import { TrendArrow } from './decor';
@@ -19,6 +20,7 @@ type Props = {
 
 /** Слайд презентации в рамке: листается стрелками на экране и на клавиатуре. */
 export function SlideFrame({ slides, index, onIndex, width, tilt = -2, style, keys = true }: Props) {
+  const t = useT('common');
   const last = slides.length - 1;
   const go = (step: number) => onIndex(Math.max(0, Math.min(last, index + step)));
 
@@ -42,15 +44,15 @@ export function SlideFrame({ slides, index, onIndex, width, tilt = -2, style, ke
   const small = width < 220;
   return (
     <View style={[styles.frame, shadow(small ? 3 : 5), { width, transform: [{ rotate: `${tilt}deg` }] }, style]}>
-      <Image source={{ uri: slide.uri }} style={{ width: '100%', aspectRatio: slide.ratio }} resizeMode="contain" accessibilityLabel={`Slide ${index + 1} of ${slides.length}`} />
+      <Image source={{ uri: slide.uri }} style={{ width: '100%', aspectRatio: slide.ratio }} resizeMode="contain" accessibilityLabel={t('slide', { n: index + 1, total: slides.length })} />
       <View style={styles.bar}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Previous slide" disabled={index === 0} onPress={() => go(-1)} hitSlop={8} style={[styles.arrow, styles.back, index === 0 && styles.off]}>
+        <Pressable accessibilityRole="button" accessibilityLabel={t('prevSlide')} disabled={index === 0} onPress={() => go(-1)} hitSlop={8} style={[styles.arrow, styles.back, index === 0 && styles.off]}>
           <TrendArrow trend="flat" size={small ? 12 : 16} color={c.ink} />
         </Pressable>
         <Text style={[styles.count, small && { fontSize: 11 }]}>
           {index + 1} / {slides.length}
         </Text>
-        <Pressable accessibilityRole="button" accessibilityLabel="Next slide" disabled={index === last} onPress={() => go(1)} hitSlop={8} style={[styles.arrow, index === last && styles.off]}>
+        <Pressable accessibilityRole="button" accessibilityLabel={t('nextSlide')} disabled={index === last} onPress={() => go(1)} hitSlop={8} style={[styles.arrow, index === last && styles.off]}>
           <TrendArrow trend="flat" size={small ? 12 : 16} color={c.ink} />
         </Pressable>
       </View>

@@ -1,4 +1,5 @@
 import { env } from '@/config/env';
+import { getLang } from '@/i18n';
 
 import type { LiveEvent, LiveHandlers } from './live';
 import { acquireMic, releaseMic } from './mic.web';
@@ -24,7 +25,7 @@ export function startLive(roundId: string | null, { onEvent, onVoice }: LiveHand
   const quietest: number[] = []; // самый тихий кадр каждого из последних кусков
   let ws: WebSocket | null = null;
   if (roundId) {
-    const url = env.apiUrl.replace(/\/$/, '').replace(/^http/, 'ws') + `/api/ai/live?round_id=${encodeURIComponent(roundId)}&pace=${pace}`;
+    const url = env.apiUrl.replace(/\/$/, '').replace(/^http/, 'ws') + `/api/ai/live?round_id=${encodeURIComponent(roundId)}&pace=${pace}&lang=${getLang()}`;
     ws = new WebSocket(url);
     ws.binaryType = 'arraybuffer';
     ws.onmessage = (m) => {
