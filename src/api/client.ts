@@ -6,6 +6,7 @@ import { getLang, translate } from '@/i18n';
 import { mocks } from './mocks';
 import type {
   AuthSession,
+  BetterVersion,
   Daily,
   Difficulty,
   FitSlides,
@@ -15,6 +16,7 @@ import type {
   Signup,
   Delivery,
   Finish,
+  Flow,
   GazePoint,
   JuryAnswer,
   JuryQuestion,
@@ -118,9 +120,9 @@ async function appendAudio(form: FormData, uri: string) {
   }
 }
 
-/** Абсолютный адрес для audio_url вопроса жюри; пустая строка, если озвучки нет. */
+/** Абсолютный адрес для audio_url вопроса жюри; пустая строка, если озвучки нет. data: и blob: — уже готовый адрес. */
 export function mediaUrl(path: string): string {
-  if (!path || /^https?:/.test(path)) return path;
+  if (!path || /^(https?|data|blob):/.test(path)) return path;
   return env.apiUrl.replace(/\/$/, '') + path;
 }
 
@@ -167,6 +169,13 @@ export const api = {
   /** Разбор раунда из истории. */
   roundReview: (roundId: string) =>
     env.useMocks ? mocked(mocks.roundReview(roundId)) : request<RoundReview>(`/api/game/rounds/${roundId}/review`),
+
+  /** Ход мысли питча: сервер начинает разбор сам после выступления, пока status — pending, спрашиваем снова. */
+  flow: (roundId: string) => (env.useMocks ? mocked(mocks.flow(roundId)) : request<Flow>(`/api/ai/rounds/${roundId}/flow`)),
+
+  /** Питч без запинок голосом игрока: готовится 20–90 с, опрашиваем так же. */
+  betterVersion: (roundId: string) =>
+    env.useMocks ? mocked(mocks.betterVersion(roundId)) : request<BetterVersion>(`/api/ai/rounds/${roundId}/better-version`),
 
   /** Колесо: случайная тема выбранного уровня. */
   spin: (difficulty: Difficulty = 'easy') => (env.useMocks ? mocked(mocks.spin()) : request<Spin>(`/api/game/spin?difficulty=${difficulty}`)),

@@ -1,4 +1,4 @@
-import { Rubik_400Regular, Rubik_500Medium, Rubik_600SemiBold, Rubik_700Bold } from '@expo-google-fonts/rubik';
+import { Rubik_400Regular, Rubik_500Medium, Rubik_500Medium_Italic, Rubik_600SemiBold, Rubik_700Bold } from '@expo-google-fonts/rubik';
 import { ShantellSans_700Bold, ShantellSans_800ExtraBold } from '@expo-google-fonts/shantell-sans';
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
@@ -13,6 +13,7 @@ export default function RootLayout() {
     ShantellSans_800ExtraBold,
     Rubik_400Regular,
     Rubik_500Medium,
+    Rubik_500Medium_Italic,
     Rubik_600SemiBold,
     Rubik_700Bold,
   });

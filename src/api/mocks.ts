@@ -3,10 +3,12 @@
 
 import type {
   AuthSession,
+  BetterVersion,
   FitSlides,
   Daily,
   Delivery,
   Finish,
+  Flow,
   JuryAnswer,
   JuryQuestion,
   LeaderboardEntry,
@@ -66,6 +68,62 @@ const REFINE_BLOCKS: RefineResponse['blocks'] = [
 ];
 
 const render = (blocks: RefineResponse['blocks']) => blocks.map((b) => `${b.title}: ${b.text}`).join('\n');
+
+const FLOW: Flow = {
+  status: 'ready',
+  summary:
+    'You open with a strong picture and finish with a clear ask, but the middle loses focus: the problem has no number and the pilot results get tangled.',
+  moments: [
+    { t: 0.6, end: 7.5, kind: 'hook', tone: 'good', quote: "Imagine it's eight in the morning and your grandmother can't remember", comment: 'A vivid picture pulls the room in from the first second.' },
+    { t: 8.0, end: 14.0, kind: 'weak', tone: 'bad', quote: 'this happens every day to millions of older people', comment: '“Millions” is too vague to stick — give one exact number.' },
+    { t: 21.0, end: 33.0, kind: 'strong', tone: 'good', quote: 'it beeps, lights up and notifies the family', comment: 'Concrete and easy to picture: the room sees the product.' },
+    { t: 40.0, end: 49.0, kind: 'off_topic', tone: 'bad', quote: 'my cousin also had a pill box once', comment: 'A side story that does not move the pitch forward.' },
+    { t: 63.0, end: 74.0, kind: 'rambling', tone: 'bad', quote: 'A pilot in three pharmacies, in three pharmacies', comment: 'You repeat yourself and lose the thread — say the result once.' },
+    { t: 84.0, end: 93.0, kind: 'strong_close', tone: 'good', quote: "We're looking for pharmacy chains as partners", comment: 'A clear ask to finish: the jury knows what you want.' },
+  ],
+};
+
+const BETTER_TEXT =
+  "Imagine it's eight in the morning and your grandmother can't remember if she took her blood pressure pill. " +
+  'One in two older people misses a dose every week. ' +
+  "We built a smart pill box: it beeps, lights up and notifies the family if it isn't opened on time. " +
+  'Our pilot in three pharmacies reached two hundred families in a month. ' +
+  "We're looking for pharmacy chains as partners — let's talk after the pitch.";
+
+const better = (): BetterVersion => ({ status: 'ready', audio_url: silentWav(32), text: BETTER_TEXT, reason: null });
+
+// когда мок впервые спросили про раунд: первые секунды ответ «ещё готовится», как у настоящего сервера
+const asked: Record<string, number> = {};
+function after<T>(key: string, ms: number, pending: T, ready: () => T): T {
+  asked[key] ??= Date.now();
+  return Date.now() - asked[key] < ms ? pending : ready();
+}
+
+const silence: Record<number, string> = {};
+/** Беззвучная запись WAV нужной длины: плеер, переходы и нарезка работают и без бэкенда. */
+function silentWav(seconds: number): string {
+  if (silence[seconds]) return silence[seconds];
+  const rate = 8000;
+  const n = Math.round(seconds * rate);
+  const bytes = new Uint8Array(44 + n).fill(128, 44); // 8-битный PCM: тишина — середина шкалы
+  const view = new DataView(bytes.buffer);
+  const tag = (at: number, text: string) => [...text].forEach((ch, i) => view.setUint8(at + i, ch.charCodeAt(0)));
+  tag(0, 'RIFF');
+  view.setUint32(4, 36 + n, true);
+  tag(8, 'WAVEfmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true); // PCM
+  view.setUint16(22, 1, true); // моно
+  view.setUint32(24, rate, true);
+  view.setUint32(28, rate, true);
+  view.setUint16(32, 1, true);
+  view.setUint16(34, 8, true);
+  tag(36, 'data');
+  view.setUint32(40, n, true);
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 0x2000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x2000));
+  return (silence[seconds] = `data:audio/wav;base64,${btoa(binary)}`);
+}
 
 export const mocks = {
   session: (nick: string): AuthSession => ({
@@ -136,14 +194,24 @@ export const mocks = {
 
   roundReview: (roundId: string): RoundReview => {
     const round = mocks.progress().history.find((r) => r.id === roundId) ?? mocks.progress().history[0];
+    // у последнего раунда ход мысли и озвучка ещё готовятся — разбор их опрашивает; у старых они уже в ответе
+    const fresh = round.id === 'rnd_mock_0';
     return {
       round,
       result: { total: round.total, content: round.content, delivery: round.delivery, jury: round.jury, rank: { title: 'Pitcher', trend: 'up' } },
       delivery: mocks.delivery(),
       jury_questions: mocks.juryQuestions(),
       jury_answers: mocks.juryQuestions().map((q) => ({ ...mocks.juryAnswer(), question_id: q.id })),
+      audio_url: silentWav(95),
+      flow: fresh ? null : FLOW,
+      better_version: fresh ? null : better(),
     };
   },
+
+  flow: (roundId: string): Flow => after<Flow>(`flow:${roundId}`, 4000, { status: 'pending', summary: null, moments: [] }, () => FLOW),
+
+  betterVersion: (roundId: string): BetterVersion =>
+    after<BetterVersion>(`better:${roundId}`, 12000, { status: 'pending', audio_url: null, text: null, reason: null }, better),
 
   spin: (): Spin => SPINS[spinIndex++ % SPINS.length],
 

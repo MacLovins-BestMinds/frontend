@@ -1,15 +1,19 @@
 import { Redirect, router } from 'expo-router';
+import { useRef } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { c, font, formatDate } from '@/design/theme';
+import { useReviewInsights } from '@/hooks/useInsights';
 import { useLayout } from '@/hooks/useLayout';
 import { useT } from '@/i18n';
 import { rankLabel } from '@/i18n/ranks';
 import { useGame } from '@/store/game';
 import { AppHeader } from '@/ui/AppHeader';
+import { BetterVersion } from '@/ui/BetterVersion';
 import { GlassButton } from '@/ui/Glass';
 import { goMenu } from '@/ui/nav';
 import { DashedLine, Paddle, Stamp } from '@/ui/decor';
+import type { PitchPlayerHandle } from '@/ui/PitchPlayer';
 import { Recording } from '@/ui/Recording';
 import { Button, Card, Container, H1, H3, Label, Muted, P, Page, Small } from '@/ui/primitives';
 
@@ -17,7 +21,12 @@ export default function Result() {
   const t = useT('result');
   const tc = useT('common');
   const { wide } = useLayout();
-  const { result, delivery, juryAnswers, juryQuestions, pitchAudioUri, pitchVideoUri, pitchVideoOffset, mode, reviewOf } = useGame();
+  const { result, delivery, juryAnswers, juryQuestions, pitchAudioUri, pitchVideoUri, pitchVideoOffset, mode, reviewOf, round, flow, betterVersion } = useGame();
+  // ход мысли и питч без запинок готовятся на сервере в фоне: у раунда из истории могут прийти готовыми
+  const insights = useReviewInsights(delivery ? (reviewOf?.id ?? round?.round_id ?? null) : null, flow, betterVersion);
+  // играет что-то одно: запись выступления или озвучка без запинок
+  const recording = useRef<PitchPlayerHandle>(null);
+  const polished = useRef<PitchPlayerHandle>(null);
 
   if (!result) return <Redirect href="/" />;
 
@@ -71,6 +80,9 @@ export default function Result() {
           <View style={[styles.columns, wide && styles.columnsWide]}>
             <View style={[styles.left, wide && styles.leftWide]}>
               <Recording
+                ref={recording}
+                flow={insights.flow}
+                onPlay={() => polished.current?.pause()}
                 delivery={delivery}
                 audioUri={pitchAudioUri}
                 videoUri={pitchVideoUri}
@@ -90,6 +102,7 @@ export default function Result() {
                   </P>
                 ))}
               </Card>
+              <BetterVersion ref={polished} better={insights.better} onPlay={() => recording.current?.pause()} />
               {juryAnswers.length > 0 && (
                 <Card flat>
                   <H3>{t('juryQuestions')}</H3>

@@ -7,6 +7,7 @@ import { preferredTags } from './device';
 import { loadLang, saveLang } from './storage';
 import audiences from './strings/audiences';
 import common from './strings/common';
+import insights from './strings/insights';
 import jury from './strings/jury';
 import landing from './strings/landing';
 import menu from './strings/menu';
@@ -27,7 +28,7 @@ export const LANGS: { id: Lang; code: string; name: string }[] = [
   { id: 'ro', code: 'RO', name: 'Română' },
 ];
 
-const NS = { audiences, common, jury, landing, menu, own, prep, profile, result, review, stage, wheel };
+const NS = { audiences, common, insights, jury, landing, menu, own, prep, profile, result, review, stage, wheel };
 
 export type Namespace = keyof typeof NS;
 export type Key<N extends Namespace> = keyof (typeof NS)[N]['en'] & string;

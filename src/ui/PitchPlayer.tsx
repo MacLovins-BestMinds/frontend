@@ -9,8 +9,11 @@ import { useT } from '@/i18n';
 import { PlayIcon } from './decor';
 
 export type PitchPlayerHandle = { playFrom: (seconds: number) => void; pause: () => void };
-/** Отметка на дорожке: где случилась ошибка, её цвет и что это (для подсказки над ползунком). */
-export type PlayerMark = { t: number; color: string; label?: string };
+/**
+ * Отметка на дорожке: где случилась ошибка, её цвет и что это (для подсказки над ползунком).
+ * dot — круглая отметка: так моменты хода мысли отличаются от отметок речи.
+ */
+export type PlayerMark = { t: number; color: string; label?: string; dot?: boolean };
 
 const THUMB = 22;
 const HIT = 34;
@@ -151,7 +154,11 @@ export function PlayerBar({ playing, position, duration, marks, onToggle, onSeek
                 <View
                   key={i}
                   pointerEvents="none"
-                  style={[styles.mark, on && styles.markOn, { left: `${Math.min(100, (m.t / duration) * 100)}%`, backgroundColor: m.color }]}
+                  style={[
+                    m.dot ? styles.dot : styles.mark,
+                    on && (m.dot ? styles.dotOn : styles.markOn),
+                    { left: `${Math.min(100, (m.t / duration) * 100)}%`, backgroundColor: m.color },
+                  ]}
                 />
               );
             })}
@@ -271,6 +278,8 @@ const styles = StyleSheet.create({
   mark: { position: 'absolute', top: 8, width: 7, height: 18, marginLeft: -3.5, borderRadius: 3, borderWidth: 1.5, borderColor: c.ink },
   // текущая или выбранная ошибка — крупнее, как глава под курсором на YouTube
   markOn: { top: 4, width: 11, height: 26, marginLeft: -5.5, borderRadius: 4, borderWidth: 2.5, zIndex: 1 },
+  dot: { position: 'absolute', top: 10, width: 14, height: 14, marginLeft: -7, borderRadius: 7, borderWidth: 2, borderColor: c.ink },
+  dotOn: { top: 6, width: 22, height: 22, marginLeft: -11, borderRadius: 11, borderWidth: 2.5, zIndex: 1 },
   hoverLine: { position: 'absolute', top: 4, width: 2, height: HIT - 8, marginLeft: -1, backgroundColor: c.graphite, opacity: 0.6 },
   thumb: {
     position: 'absolute',
