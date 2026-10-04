@@ -2,14 +2,9 @@ import { Linking, Pressable, StyleSheet, Text } from 'react-native';
 
 import type { Case } from '@/api/types';
 import { GENERAL_SOURCES, findAudience } from '@/content/audiences';
-import { c, font } from '@/design/theme';
+import { c, font, formatRange } from '@/design/theme';
 
 import { Card, H3, Label, Muted, P } from './primitives';
-
-function formatRange(minSec: number, maxSec: number): string {
-  if (maxSec < 60) return `${minSec}–${maxSec} seconds`;
-  return `${Math.round(minSec / 60)}–${Math.round(maxSec / 60)} minutes`;
-}
 
 /** Карточка темы, блок «Что от тебя хотят» и подсказки по аудитории с источниками. */
 export function Brief({ topic, minSec, maxSec }: { topic: Case; minSec: number; maxSec: number }) {

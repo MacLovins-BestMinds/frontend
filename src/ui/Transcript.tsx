@@ -19,6 +19,13 @@ export const MARK: Record<TimelineEvent['type'], { color: string; name: string }
 };
 const LEGEND = ['filler', 'repeat', 'long_pause', 'pace'] as const;
 
+/** Подпись отметки на дорожке плеера: у паразита и повтора текст — одно слово, добавляем, что это. */
+export function markLabel(e: TimelineEvent): string {
+  if (e.type !== 'filler' && e.type !== 'repeat' && e.type !== 'profanity') return e.text;
+  const name = MARK[e.type].name;
+  return `${name[0].toUpperCase()}${name.slice(1)} ${e.text}`;
+}
+
 /**
  * Кусок транскрипта: обычный текст, отмеченное место (паразит, повтор) или значок между словами (пауза, темп).
  * from/to — место куска в транскрипте; у значка их нет.
@@ -100,7 +107,7 @@ export const Transcript = forwardRef<TranscriptHandle, Props>(function Transcrip
   const words = useMemo(() => delivery.words ?? [], [delivery.words]);
   const pieces = useMemo(() => markTranscript(transcript, events), [transcript, events]);
   // на дорожке текста — только то, что отмечено в тексте; взгляд живёт на дорожке видео
-  const marks = useMemo(() => events.filter((e) => e.type !== 'gaze_off').map((e) => ({ t: e.t, color: MARK[e.type]?.color ?? c.markPause })), [events]);
+  const marks = useMemo(() => events.filter((e) => e.type !== 'gaze_off').map((e) => ({ t: e.t, color: MARK[e.type]?.color ?? c.markPause, label: markLabel(e) })), [events]);
 
   const follow = useRef(media);
   follow.current = media;

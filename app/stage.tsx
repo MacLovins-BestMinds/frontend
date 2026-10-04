@@ -14,9 +14,10 @@ import { useStayAwake } from '@/hooks/useStayAwake';
 import { AudienceScene } from '@/scene/AudienceScene';
 import { CameraFrame } from '@/scene/CameraFrame';
 import { startCapture, type Capture, type CaptureResult } from '@/video/capture';
-import { useGame } from '@/store/game';
+import { pitchLimitsFor, useGame } from '@/store/game';
 import { Bulbs, EyeIcon } from '@/ui/decor';
-import { Button } from '@/ui/primitives';
+import { Pending } from '@/ui/Pending';
+import { Button, ErrorText } from '@/ui/primitives';
 
 // Шкала внимания — это то, что зал думает о последних секундах выступления. Она складывается из трёх вещей:
 // 1) звучит ли голос (сам по себе голос поднимает шкалу только до 60);
@@ -80,7 +81,7 @@ function goal(voice: number, content: number | null, slips: number, silent: numb
 
 export default function Stage() {
   useStayAwake();
-  const { user, topic, round, notes, camera, pace, difficulty, setCamera, setDelivery, setPitchAudio, setPitchVideo } = useGame();
+  const { user, topic, round, notes, camera, pace, difficulty, pitchLimits, setCamera, setDelivery, setPitchAudio, setPitchVideo } = useGame();
   const { width, height } = useLayout();
   const insets = useSafeAreaInsets();
   const recorder = useRecorder();
@@ -88,6 +89,8 @@ export default function Stage() {
   const [attention, setAttention] = useState(START_ATTENTION);
   const [micOk, setMicOk] = useState(true);
   const [sending, setSending] = useState(false);
+  // что происходит после «Закончить»: 0 — сохраняем запись, 1 — сервер слушает и оценивает
+  const [step, setStep] = useState(0);
   const [error, setError] = useState('');
   const audioUri = useRef<string | null>(null);
   const audioStart = useRef(0); // секунда раунда, с которой реально пишется звук
@@ -157,7 +160,8 @@ export default function Stage() {
     if (e.type === 'pace') say(e.verdict === 'fast' ? 'Too fast — slow down' : dragging ? 'You chose a fast pace — speed up' : 'Too slow — pick up the pace', 'bad');
   };
 
-  const maxSec = round?.pitch_max_sec ?? 180;
+  const limits = pitchLimitsFor(round, pitchLimits);
+  const maxSec = limits.max;
 
   useEffect(() => {
     recorder.start().then((ok) => {
@@ -240,6 +244,7 @@ export default function Stage() {
     if (!round || finished.current) return;
     finished.current = true;
     setSending(true);
+    setStep(0);
     setError('');
     stopLive.current();
     try {
@@ -252,18 +257,20 @@ export default function Stage() {
         // смещение видео — относительно начала звукозаписи: в разборе время ведёт звук
         setPitchVideo(shot.current.videoUri, shot.current.videoOffset - audioStart.current);
       }
-      setDelivery(await api.delivery(round.round_id, audioUri.current, shot.current?.gaze ?? [], notes, pace));
+      setStep(1);
+      setDelivery(await api.delivery(round.round_id, audioUri.current, shot.current?.gaze ?? [], notes, pace, pitchLimits ? limits : null));
       router.replace('/jury');
     } catch (e) {
+      // запись уже сохранена: «Попробовать ещё раз» отправит её же, а не начнёт питч заново
       setError(`Could not get the review: ${(e as Error).message}`);
-      setSending(false);
       finished.current = false;
     }
   };
 
   // лимит времени вышел — заканчиваем сами
   useEffect(() => {
-    if (elapsed >= maxSec && !finished.current) finish();
+    // после ошибки отправки (sending остаётся) не повторяем сами — ждём «Try again»
+    if (elapsed >= maxSec && !finished.current && !sending) finish();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [elapsed, maxSec]);
 
@@ -275,7 +282,7 @@ export default function Stage() {
   const hud = landscape
     ? { top: insets.top + (big ? 28 : 10), left: insets.left + (big ? 40 : 24), right: insets.right + (big ? 40 : 24) }
     : { top: Math.max(insets.top + 8, height * 0.125), left: width * 0.135, right: width * 0.135 };
-  const notice = error || (!micOk ? `The microphone is unavailable — nothing is being recorded${env.useMocks ? '; you can continue in mock mode' : ''}.` : '');
+  const notice = sending ? '' : error || (!micOk ? `The microphone is unavailable — nothing is being recorded${env.useMocks ? '; you can continue in mock mode' : ''}.` : '');
 
   const timer = (
     <View style={[styles.board, styles.timer, big && styles.timerBig]}>
@@ -350,6 +357,24 @@ export default function Stage() {
           style={landscape ? [styles.cameraLandscape, big && { marginRight: 120, marginTop: 22 }] : styles.cameraPortrait}
         />
       </View>
+      {sending && (
+        <View style={[styles.pending, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 16 }]}>
+          {error ? (
+            <View style={styles.pendingCard}>
+              <ErrorText>{error}</ErrorText>
+              <Button title="Try again" onPress={finish} />
+            </View>
+          ) : (
+            <Pending
+              style={styles.pendingCard}
+              title="Reviewing your pitch"
+              steps={['Saving your recording', 'Transcribing and scoring your speech', 'The jury prepares questions']}
+              current={step}
+              note="Usually 10–30 seconds. Please keep this screen open."
+            />
+          )}
+        </View>
+      )}
       {notice ? (
         <View style={[styles.notice, { bottom: insets.bottom + 12 }]}>
           <Text style={styles.noticeText}>{notice}</Text>
@@ -385,6 +410,8 @@ const styles = StyleSheet.create({
   hintPortrait: { alignSelf: 'center', top: 132 },
   hintDot: { width: 14, height: 14, borderRadius: 7, backgroundColor: c.bad, borderWidth: 2, borderColor: c.ink },
   hintText: { fontFamily: font.bold, fontSize: 16, lineHeight: 21, color: c.ink, flexShrink: 1 },
+  pending: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(22, 20, 24, 0.55)', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16 },
+  pendingCard: { width: '100%', maxWidth: 460, gap: 12 },
   notice: { position: 'absolute', left: 20, right: 20, alignItems: 'center' },
   noticeText: { fontFamily: font.bold, fontSize: 14, color: c.bad, backgroundColor: c.paper, borderRadius: 12, overflow: 'hidden', paddingHorizontal: 14, paddingVertical: 8, ...outline },
 });

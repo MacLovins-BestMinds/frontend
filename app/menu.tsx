@@ -71,7 +71,7 @@ export default function Menu() {
       <Label style={styles.ink}>Training</Label>
       <Text style={[styles.trainingTitle, !wide && styles.trainingTitleNarrow, { marginRight: wheelRoom * 0.55 }]}>Spin the wheel, get a topic</Text>
       <P style={[styles.trainingText, !wide && { fontSize: 15, lineHeight: 21 }, { marginRight: wheelRoom }]}>
-        {wide ? 'The wheel picks a topic for your level. A few minutes to prepare, then 1–3 minutes to pitch. Spin as many times as you like.' : 'A topic for your level, 1–3 minutes to pitch.'}
+        {wide ? 'The wheel picks a topic for your level. A few minutes to prepare, then 1–3 minutes to pitch — or set your own length. Spin as many times as you like.' : 'A topic for your level, 1–3 minutes to pitch or your own length.'}
       </P>
       <Button title="Spin the wheel" variant="ink" onPress={() => router.push('/wheel')} style={styles.trainingButton} />
     </Card>

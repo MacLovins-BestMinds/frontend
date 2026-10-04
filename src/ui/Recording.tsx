@@ -7,7 +7,7 @@ import { c, font } from '@/design/theme';
 import type { PitchPlayerHandle } from './PitchPlayer';
 import { PitchVideo } from './PitchVideo';
 import { Card, H3, Label, Muted } from './primitives';
-import { MARK, Transcript } from './Transcript';
+import { MARK, markLabel, Transcript } from './Transcript';
 
 type Props = {
   delivery: Delivery;
@@ -39,8 +39,8 @@ export function Recording({ delivery, audioUri, videoUri, videoOffset, duration,
   // на дорожке видео — всё сразу: отметки из текста и моменты, когда взгляд ушёл
   const marks = useMemo(
     () => [
-      ...delivery.events.filter((e) => e.type !== 'gaze_off').map((e) => ({ t: e.t, color: MARK[e.type]?.color ?? c.markPause })),
-      ...away.map((s) => ({ t: s.from, color: c.markGaze })),
+      ...delivery.events.filter((e) => e.type !== 'gaze_off').map((e) => ({ t: e.t, color: MARK[e.type]?.color ?? c.markPause, label: markLabel(e) })),
+      ...away.map((s) => ({ t: s.from, color: c.markGaze, label: `Eyes off the room for ${Math.round(s.to - s.from)} s` })),
     ],
     [delivery.events, away],
   );
