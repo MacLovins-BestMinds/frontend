@@ -18,6 +18,7 @@ import { startCapture, type Capture, type CaptureResult } from '@/video/capture'
 import { pitchLimitsFor, useGame } from '@/store/game';
 import { Bulbs, EyeIcon } from '@/ui/decor';
 import { Pending } from '@/ui/Pending';
+import { SlideFrame } from '@/ui/SlideFrame';
 import { Button, ErrorText } from '@/ui/primitives';
 
 // Шкала внимания — это то, что зал думает о последних секундах выступления. Она складывается из трёх вещей:
@@ -82,7 +83,8 @@ function goal(voice: number, content: number | null, slips: number, silent: numb
 
 export default function Stage() {
   useStayAwake();
-  const { user, topic, round, notes, camera, pace, difficulty, pitchLimits, setCamera, setDelivery, setPitchAudio, setPitchVideo } = useGame();
+  const { user, topic, round, notes, camera, pace, difficulty, pitchLimits, slides, setCamera, setDelivery, setPitchAudio, setPitchVideo } = useGame();
+  const [slideAt, setSlideAt] = useState(0);
   const { width, height } = useLayout();
   const insets = useSafeAreaInsets();
   const recorder = useRecorder();
@@ -346,6 +348,32 @@ export default function Stage() {
     />
   );
 
+  // со слайдами камера меньше и стоит в одном ряду с рамкой слайда
+  const withSlides = slides.length > 0;
+  const cameraFrame = (
+    <CameraFrame
+      facing={camera}
+      onFacing={setCamera}
+      onReady={(video, stream) => {
+        if (finished.current) return;
+        setCameraOn(true);
+        startCamera.current = () => {
+          // камеру сменили — прежний кусок видео закрываем, запись идёт дальше с новой камеры
+          capture.current?.stop();
+          capture.current = startCapture(video, stream, {
+            clock: now,
+            onLook: (on) => (awaySince.current = on ? null : now()),
+          });
+        };
+        // до Start только превью: съёмка начнётся вместе с таймером
+        if (startedRef.current) startCamera.current();
+      }}
+      size={withSlides ? (big ? 220 : landscape ? 130 : 140) : big ? 280 : landscape ? 150 : 190}
+      tilt={landscape ? 5 : -4}
+      style={withSlides ? undefined : landscape ? [styles.cameraLandscape, big && { marginRight: 120, marginTop: 22 }] : styles.cameraPortrait}
+    />
+  );
+
   return (
     <View style={styles.root}>
       <AudienceScene attention={attention} width={width} height={height} />
@@ -371,27 +399,15 @@ export default function Stage() {
             <Text style={styles.hintText}>{hint.text}</Text>
           </View>
         ) : null}
-        <CameraFrame
-          facing={camera}
-          onFacing={setCamera}
-          onReady={(video, stream) => {
-            if (finished.current) return;
-            setCameraOn(true);
-            startCamera.current = () => {
-              // камеру сменили — прежний кусок видео закрываем, запись идёт дальше с новой камеры
-              capture.current?.stop();
-              capture.current = startCapture(video, stream, {
-                clock: now,
-                onLook: (on) => (awaySince.current = on ? null : now()),
-              });
-            };
-            // до Start только превью: съёмка начнётся вместе с таймером
-            if (startedRef.current) startCamera.current();
-          }}
-          size={big ? 280 : landscape ? 150 : 190}
-          tilt={landscape ? 5 : -4}
-          style={landscape ? [styles.cameraLandscape, big && { marginRight: 120, marginTop: 22 }] : styles.cameraPortrait}
-        />
+        {withSlides ? (
+          // показ с презентацией: слайд в рамке стоит рядом с камерой, листается стрелками
+          <View style={[styles.show, landscape ? styles.showLandscape : styles.showPortrait, big && { marginRight: 110, marginTop: 22 }]}>
+            <SlideFrame slides={slides} index={slideAt} onIndex={setSlideAt} width={big ? 280 : landscape ? 190 : 160} tilt={landscape ? -2 : -3} />
+            {cameraFrame}
+          </View>
+        ) : (
+          cameraFrame
+        )}
       </View>
       {!started && (
         <View style={[styles.ready, { paddingBottom: insets.bottom + 16, paddingLeft: insets.left + 16, paddingRight: insets.right + 16 }]}>
@@ -459,6 +475,9 @@ const styles = StyleSheet.create({
   bulbs: { flexDirection: 'row', flexGrow: 1 },
   finish: { transform: [{ rotate: '1.5deg' }] },
   cameraPortrait: { alignSelf: 'center', marginTop: 52 },
+  show: { flexDirection: 'row', alignItems: 'center', gap: 16 },
+  showLandscape: { alignSelf: 'flex-end', marginRight: 60, marginTop: 6 },
+  showPortrait: { alignSelf: 'center', marginTop: 52, gap: 10 },
   cameraLandscape: { alignSelf: 'flex-end', marginRight: 96, marginTop: 6 },
   // подсказка стоит поверх сцены и не двигает рамку камеры
   hint: { position: 'absolute', flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: c.paper, borderRadius: 999, paddingLeft: 12, paddingRight: 18, minHeight: 42, maxWidth: '100%', ...outline, ...shadow(3) },

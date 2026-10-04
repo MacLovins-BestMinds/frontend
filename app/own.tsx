@@ -1,6 +1,9 @@
-import { Redirect, router } from 'expo-router';
-import { useState } from 'react';
+import { Redirect, router, useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+
+import { renderSlides } from '@/slides/render';
+import { SlideFrame } from '@/ui/SlideFrame';
 
 import { api } from '@/api/client';
 import * as DocumentPicker from 'expo-document-picker';
@@ -21,12 +24,23 @@ export default function OwnPitch() {
   const { wide } = useLayout();
   const user = useGame((s) => s.user);
   const startOwnPitch = useGame((s) => s.startOwnPitch);
+  const slides = useGame((s) => s.slides);
+  const setSlides = useGame((s) => s.setSlides);
+  const [slideAt, setSlideAt] = useState(0);
+  // экран остаётся под сценой: стрелки должны листать слайды только там, где игрок сейчас находится
+  const [focused, setFocused] = useState(false);
+  useFocusEffect(
+    useCallback(() => {
+      setFocused(true);
+      return () => setFocused(false);
+    }, []),
+  );
   const [title, setTitle] = useState('');
   const [audience, setAudience] = useState<AudienceId>('business');
   const [text, setText] = useState('');
   const [original, setOriginal] = useState('');
   const [refined, setRefined] = useState<RefineResponse | null>(null);
-  const [loading, setLoading] = useState<RefineMode | 'slides' | null>(null);
+  const [loading, setLoading] = useState<RefineMode | 'slides' | 'show' | null>(null);
   const [deck, setDeck] = useState<PickedFile | null>(null);
   const [fitted, setFitted] = useState<FitSlides | null>(null);
   const [error, setError] = useState('');
@@ -62,6 +76,8 @@ export default function OwnPitch() {
     const asset = picked.assets[0];
     setDeck({ uri: asset.uri, name: asset.name, mimeType: asset.mimeType ?? undefined, file: asset.file });
     setFitted(null);
+    setSlides([]);
+    setSlideAt(0);
   };
 
   /** Раскладывает питч по слайдам: что говорить на каждом. Слайд про демо становится «Demo time.». */
@@ -74,6 +90,21 @@ export default function OwnPitch() {
       setFitted(await api.fitSlides(deck, title.trim(), (original || text).trim(), audience));
     } catch (e) {
       setError(`Could not fit the text to the slides: ${(e as Error).message.replace(/^\d+: /, '')}`);
+    } finally {
+      setLoading(null);
+    }
+  };
+
+  /** Показ с презентацией: слайды будут стоять на сцене рядом с камерой, листаются стрелками. */
+  const present = async () => {
+    if (!deck) return;
+    setError('');
+    setLoading('show');
+    try {
+      setSlides(await renderSlides(deck));
+      setSlideAt(0);
+    } catch (e) {
+      setError((e as Error).message);
     } finally {
       setLoading(null);
     }
@@ -149,8 +180,26 @@ export default function OwnPitch() {
             <View style={styles.refine}>
               <Button title={deck ? 'Choose another file' : 'Upload slides'} variant="secondary" size="sm" disabled={loading !== null} onPress={pickDeck} />
               {deck && <Button title="Fit text to slides" size="sm" loading={loading === 'slides'} disabled={loading !== null} onPress={fit} />}
+              {deck && (
+                <Button
+                  title={slides.length ? 'Slides are on' : 'Present with slides'}
+                  variant={slides.length ? 'ink' : 'primary'}
+                  size="sm"
+                  loading={loading === 'show'}
+                  disabled={loading !== null}
+                  onPress={slides.length ? () => setSlides([]) : present}
+                />
+              )}
             </View>
             {deck && <Text style={styles.file} numberOfLines={1}>{deck.name}</Text>}
+            {slides.length > 0 && (
+              <View style={styles.preview}>
+                <SlideFrame slides={slides} index={slideAt} onIndex={setSlideAt} width={wide ? 340 : 260} tilt={-1.5} keys={focused} />
+                <Small>
+                  This is how your slides will sit on stage, next to your camera. Switch them with the ← → keys or the arrows under the slide. Tap “Slides are on” to turn them off.
+                </Small>
+              </View>
+            )}
           </Card>
           {fitted && (
             <Card tone="accent">
@@ -241,6 +290,7 @@ const styles = StyleSheet.create({
   small: { fontFamily: font.body, fontSize: 13, lineHeight: 18, color: c.ink },
   was: { fontFamily: font.bold, fontSize: 14, color: c.ink, marginTop: 6 },
   file: { fontFamily: font.semi, fontSize: 14, color: c.graphite },
+  preview: { gap: 14, marginTop: 6, alignItems: 'flex-start' },
   slides: { maxHeight: 260 },
   slidesInner: { gap: 10 },
   slide: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },
