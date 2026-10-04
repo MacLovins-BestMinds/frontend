@@ -5,6 +5,7 @@ import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { c, font, outline, shadow } from '@/design/theme';
+import { useT } from '@/i18n';
 
 import { PlayerBar, type PitchPlayerHandle, type PlayerMark } from './PitchPlayer';
 
@@ -43,6 +44,7 @@ export const PitchVideo = forwardRef<PitchPlayerHandle, PitchVideoProps>(functio
   { uri, offset, fallbackDuration, marks, notes, onPlay, onTime, audioUri },
   ref,
 ) {
+  const t = useT('review');
   const video = useVideoPlayer(uri, (p) => {
     p.muted = true;
     p.timeUpdateEventInterval = TICK_SEC;
@@ -146,7 +148,7 @@ export const PitchVideo = forwardRef<PitchPlayerHandle, PitchVideoProps>(functio
   return (
     <View style={styles.wrap}>
       <View style={styles.limit}>
-        <Pressable accessibilityRole="button" accessibilityLabel={playing ? 'Pause' : 'Play the recording'} onPress={toggle} style={styles.frame}>
+        <Pressable accessibilityRole="button" accessibilityLabel={playing ? t('pause') : t('play')} onPress={toggle} style={styles.frame}>
           {/* обрезка отдельным слоем: на iOS overflow: hidden срезает тень рамки */}
           <View style={styles.clip}>
             <VideoView player={video} style={StyleSheet.absoluteFill} contentFit="contain" nativeControls={false} pointerEvents="none" />

@@ -1,5 +1,7 @@
 // Типы строго по контрактам из docs/tz (Часть 1) и схемам бэкенда.
 
+import type { Lang } from '@/i18n/define';
+
 export type Mode = 'training' | 'daily' | 'own' | 'warmup';
 
 export type Rank = { title: string; trend: 'up' | 'down' | 'flat' | string };
@@ -30,6 +32,8 @@ export type Round = {
   prep_sec: number;
   pitch_min_sec: number;
   pitch_max_sec: number;
+  /** Язык раунда: на нём сервер пишет разбор и вопросы жюри. */
+  lang?: Lang;
 };
 
 export type TimelineEvent = {
@@ -73,6 +77,8 @@ export type Delivery = {
   tips: string[];
   /** Оценка английского произношения; null — не настроено или речь не на английском. */
   pronunciation?: Pronunciation | null;
+  /** На каком языке игрок на самом деле говорил (распознал сервер). */
+  speech_lang?: Lang;
 };
 
 export type Pronunciation = {

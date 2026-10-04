@@ -2,34 +2,35 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { Difficulty } from '@/api/types';
 import { c, font, outline, shadow } from '@/design/theme';
+import { translate, useT } from '@/i18n';
 
-/** Уровень меняет весь раунд: тему, время на подготовку, строгость разбора, жюри и зала. */
-export const LEVELS: { id: Difficulty; name: string; note: string }[] = [
-  { id: 'easy', name: 'Easy', note: 'Everyday topics, 5 minutes to prepare, a forgiving room and jury.' },
-  { id: 'medium', name: 'Medium', note: 'Topics you have to argue, 4 minutes to prepare, the jury asks why.' },
-  { id: 'hard', name: 'Hard', note: 'Big ideas, 3 minutes to prepare, a strict jury and a cold room.' },
-];
+/** Уровень меняет весь раунд: тему, время на подготовку, строгость разбора, жюри и зала. Названия — в словаре common. */
+export const LEVELS: Difficulty[] = ['easy', 'medium', 'hard'];
 
-export const levelName = (id: string) => LEVELS.find((l) => l.id === id)?.name ?? id;
+const isLevel = (id: string): id is Difficulty => (LEVELS as string[]).includes(id);
+
+/** Название уровня на текущем языке; вызывать при отрисовке экрана, который сам подписан на язык (useT). */
+export const levelName = (id: string) => (isLevel(id) ? translate('common', `level.${id}`) : id);
 
 type Props = { value: Difficulty; onChange: (level: Difficulty) => void; disabled?: boolean; compact?: boolean };
 
 /** Выбор уровня сложности: три карточки (compact — только названия в одну строку). */
 export function LevelPicker({ value, onChange, disabled, compact }: Props) {
+  const t = useT('common');
   return (
-    <View style={styles.row} accessibilityRole="radiogroup" accessibilityLabel="Difficulty">
+    <View style={styles.row} accessibilityRole="radiogroup" accessibilityLabel={t('difficulty')}>
       {LEVELS.map((level) => {
-        const selected = level.id === value;
+        const selected = level === value;
         return (
           <Pressable
-            key={level.id}
+            key={level}
             accessibilityRole="radio"
             aria-checked={selected}
             disabled={disabled}
-            onPress={() => onChange(level.id)}
+            onPress={() => onChange(level)}
             style={[styles.level, compact && styles.levelCompact, selected && styles.on, selected && shadow(3), disabled && !selected && styles.off]}>
-            <Text style={styles.name}>{level.name}</Text>
-            {!compact && <Text style={styles.note}>{level.note}</Text>}
+            <Text style={styles.name}>{t(`level.${level}`)}</Text>
+            {!compact && <Text style={styles.note}>{t(`level.${level}.note`)}</Text>}
           </Pressable>
         );
       })}

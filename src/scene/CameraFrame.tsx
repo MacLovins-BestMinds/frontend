@@ -136,7 +136,7 @@ export function CameraFrame({ facing = 'user', onFacing, onReady, ...props }: Pr
           }}
         />
       ) : null}
-      {!live && <CameraPlaceholder text={on || (!asked && permission.canRequestPermission) ? 'camera' : 'no camera'} />}
+      {!live && <CameraPlaceholder off={!(on || (!asked && permission.canRequestPermission))} />}
     </Frame>
   );
 }

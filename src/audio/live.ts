@@ -1,4 +1,5 @@
 import { env } from '@/config/env';
+import { getLang } from '@/i18n';
 
 import { setLiveSink } from './liveFeed';
 
@@ -33,7 +34,7 @@ export function startLive(roundId: string | null, { onEvent, onVoice }: LiveHand
   const quietest: number[] = [];
   let ws: WebSocket | null = null;
   if (roundId) {
-    const url = env.apiUrl.replace(/\/$/, '').replace(/^http/, 'ws') + `/api/ai/live?round_id=${encodeURIComponent(roundId)}&pace=${pace}`;
+    const url = env.apiUrl.replace(/\/$/, '').replace(/^http/, 'ws') + `/api/ai/live?round_id=${encodeURIComponent(roundId)}&pace=${pace}&lang=${getLang()}`;
     ws = new WebSocket(url);
     ws.binaryType = 'arraybuffer';
     ws.onmessage = (m) => {

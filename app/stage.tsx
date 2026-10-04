@@ -12,6 +12,7 @@ import { env } from '@/config/env';
 import { c, font, formatRange, formatTime, outline, shadow } from '@/design/theme';
 import { useLayout } from '@/hooks/useLayout';
 import { useStayAwake } from '@/hooks/useStayAwake';
+import { translate, useT } from '@/i18n';
 import { AudienceScene } from '@/scene/AudienceScene';
 import { CameraFrame } from '@/scene/CameraFrame';
 import { startCapture, type Capture, type CaptureResult } from '@/video/capture';
@@ -44,11 +45,11 @@ const MOCK_CYCLE_SEC = 27;
 const MOCK_TALK_SEC = 18;
 // На моках сервера нет — оценку содержания имитируем, чтобы шкала и подсказки были видны.
 const MOCK_CONTENT = [
-  { score: 82, comment: 'Clear point' },
-  { score: 34, comment: 'Give one example' },
-  { score: 74, comment: '' },
-  { score: 22, comment: 'Back to your topic' },
-];
+  { score: 82, comment: 'mockClear' },
+  { score: 34, comment: 'mockExample' },
+  { score: 74, comment: null },
+  { score: 22, comment: 'backToTopic' },
+] as const;
 
 // Уровень сложности меняет характер зала: насколько больно бьют оговорки, сколько тишины он терпит
 // и какое содержание его впечатляет (mid — оценка содержания, с которой зал не теряет и не прибавляет).
@@ -83,6 +84,8 @@ function goal(voice: number, content: number | null, slips: number, silent: numb
 
 export default function Stage() {
   useStayAwake();
+  const t = useT('stage');
+  const tc = useT('common');
   const { user, topic, round, notes, camera, pace, difficulty, pitchLimits, slides, setCamera, setDelivery, setPitchAudio, setPitchVideo } = useGame();
   const [slideAt, setSlideAt] = useState(0);
   const { width, height } = useLayout();
@@ -157,7 +160,7 @@ export default function Stage() {
   const onContent = (score: number, comment: string) => {
     content.current = { score, t: now() };
     if (comment) say(comment, score >= 70 ? 'good' : score < 45 ? 'bad' : 'info');
-    else if (score < 35) say('Back to your topic', 'bad');
+    else if (score < 35) say(translate('stage', 'backToTopic'), 'bad');
   };
   const onEvent = (e: LiveEvent) => {
     if (e.type === 'content') return onContent(e.score, e.comment);
@@ -165,9 +168,10 @@ export default function Stage() {
     const dragging = e.type === 'pace' && e.verdict === 'slow' && pace === 'fast';
     const cost = dragging ? 18 : slipCost(e);
     if (cost) slips.current.push({ t: now(), cost });
-    if (e.type === 'filler') say(e.burst ? 'Fillers again — pause instead' : `Filler word: “${e.word}”`, 'bad');
-    if (e.type === 'profanity') say('Watch your language!', 'bad');
-    if (e.type === 'pace') say(e.verdict === 'fast' ? 'Too fast — slow down' : dragging ? 'You chose a fast pace — speed up' : 'Too slow — pick up the pace', 'bad');
+    // подсказки зала переводим в момент показа: обработчик живёт с начала питча, а язык могли сменить
+    if (e.type === 'filler') say(e.burst ? translate('stage', 'fillersAgain') : translate('stage', 'filler', { word: e.word }), 'bad');
+    if (e.type === 'profanity') say(translate('stage', 'language'), 'bad');
+    if (e.type === 'pace') say(translate('stage', e.verdict === 'fast' ? 'tooFast' : dragging ? 'speedUp' : 'tooSlow'), 'bad');
   };
 
   const limits = pitchLimitsFor(round, pitchLimits);
@@ -238,7 +242,7 @@ export default function Stage() {
     const silent = t - lastVoice.current;
     if (env.useMocks && silent < 1 && t % 7 === 0) {
       const mock = MOCK_CONTENT[(t / 7) % MOCK_CONTENT.length];
-      onContent(mock.score, mock.comment);
+      onContent(mock.score, mock.comment ? translate('stage', mock.comment) : '');
     }
 
     voiceTicks.current.push(silent <= 1);
@@ -264,12 +268,12 @@ export default function Stage() {
     if (silent < ROOM[difficulty].silence) silenceHinted.current = 0;
     else if (silent >= quiet && silenceHinted.current < 4) {
       silenceHinted.current = 4;
-      say(spoke.current ? 'You have gone quiet — keep talking' : 'The room is waiting — start talking', 'bad');
+      say(translate('stage', spoke.current ? 'quiet' : 'waiting'), 'bad');
     } else if (silent >= 9 && silenceHinted.current < 9) {
       silenceHinted.current = 9;
-      say(`Silent for ${Math.round(silent)} s — say your next point`, 'bad');
+      say(translate('stage', 'silentFor', { n: Math.round(silent) }), 'bad');
     }
-    if (away >= 3 && away < 3 + STEP_SEC) say('Look at the room', 'bad');
+    if (away >= 3 && away < 3 + STEP_SEC) say(translate('stage', 'lookAtRoom'), 'bad');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [half, sending]);
 
@@ -295,7 +299,7 @@ export default function Stage() {
       router.replace('/jury');
     } catch (e) {
       // запись уже сохранена: «Попробовать ещё раз» отправит её же, а не начнёт питч заново
-      setError(`Could not get the review: ${(e as Error).message}`);
+      setError(t('errReview', { message: (e as Error).message }));
       finished.current = false;
     }
   };
@@ -315,7 +319,7 @@ export default function Stage() {
   const hud = landscape
     ? { top: insets.top + (big ? 28 : 10), left: insets.left + (big ? 40 : 24), right: insets.right + (big ? 40 : 24) }
     : { top: Math.max(insets.top + 8, height * 0.125), left: width * 0.135, right: width * 0.135 };
-  const notice = sending || !started ? '' : error || (!micOk ? `The microphone is unavailable — nothing is being recorded${env.useMocks ? '; you can continue in mock mode' : ''}.` : '');
+  const notice = sending || !started ? '' : error || (!micOk ? t('micOff', { mock: env.useMocks ? t('micOffMock') : '' }) : '');
 
   const timer = (
     <View style={[styles.board, styles.timer, big && styles.timerBig]}>
@@ -326,7 +330,7 @@ export default function Stage() {
   const label = (
     <>
       <EyeIcon size={landscape ? 18 : 17} color={landscape ? c.ink : c.orange} />
-      <Text style={[styles.attentionLabel, landscape && { color: c.ink }]}>Attention</Text>
+      <Text style={[styles.attentionLabel, landscape && { color: c.ink }]}>{t('attention')}</Text>
     </>
   );
   const attentionBar = (
@@ -341,7 +345,7 @@ export default function Stage() {
     // закончить можно в любой момент: короткий питч бэкенд не отвергает, он просто получает меньше баллов за тайминг
     <Button
       size={big ? 'md' : 'sm'}
-      title={landscape ? 'Finish pitch' : 'Finish\npitch'}
+      title={landscape ? t('finish') : t('finishTwoLines')}
       loading={sending}
       onPress={finish}
       style={styles.finish}
@@ -412,21 +416,17 @@ export default function Stage() {
       {!started && (
         <View style={[styles.ready, { paddingBottom: insets.bottom + 16, paddingLeft: insets.left + 16, paddingRight: insets.right + 16 }]}>
           <View style={styles.readyCard}>
-            <Text style={styles.readyLabel}>You are on stage</Text>
+            <Text style={styles.readyLabel}>{t('onStage')}</Text>
             <Text style={styles.readyTitle} numberOfLines={2}>
               {topic.title}
             </Text>
-            <Text style={styles.readyText}>
-              Speak for {formatRange(limits.min, limits.max)}. The timer, the recording and the room start when you press Start.
-            </Text>
+            <Text style={styles.readyText}>{t('startNote', { range: formatRange(limits.min, limits.max), start: t('start') })}</Text>
             <View style={styles.checks}>
-              <Text style={[styles.check, mic === 'denied' && { color: c.bad }]}>
-                {mic === 'ok' ? '✓ Microphone ready' : mic === 'asking' ? '… Allow the microphone' : '✕ Microphone blocked — allow it in the browser settings'}
-              </Text>
-              <Text style={styles.check}>{cameraOn ? '✓ Camera on' : '… Camera (optional): allow it to track eye contact'}</Text>
+              <Text style={[styles.check, mic === 'denied' && { color: c.bad }]}>{t(mic === 'ok' ? 'micReady' : mic === 'asking' ? 'micAsking' : 'micDenied')}</Text>
+              <Text style={styles.check}>{t(cameraOn ? 'cameraOn' : 'cameraOff')}</Text>
             </View>
           </View>
-          <Button size="lg" title={mic === 'asking' ? 'Waiting for the microphone…' : 'Start'} disabled={mic === 'asking'} onPress={begin} style={styles.start} />
+          <Button size="lg" title={mic === 'asking' ? t('waitingMic') : t('start')} disabled={mic === 'asking'} onPress={begin} style={styles.start} />
         </View>
       )}
       {sending && (
@@ -434,15 +434,15 @@ export default function Stage() {
           {error ? (
             <View style={styles.pendingCard}>
               <ErrorText>{error}</ErrorText>
-              <Button title="Try again" onPress={finish} />
+              <Button title={tc('tryAgain')} onPress={finish} />
             </View>
           ) : (
             <Pending
               style={styles.pendingCard}
-              title="Reviewing your pitch"
-              steps={['Saving your recording', 'Transcribing and scoring your speech', 'The jury prepares questions']}
+              title={t('reviewing')}
+              steps={[t('stepSave'), t('stepScore'), t('stepJury')]}
               current={step}
-              note="Usually 10–30 seconds. Please keep this screen open."
+              note={t('reviewingNote')}
             />
           )}
         </View>
