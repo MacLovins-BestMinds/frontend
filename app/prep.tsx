@@ -9,10 +9,12 @@ import { useLayout } from '@/hooks/useLayout';
 import { useStayAwake } from '@/hooks/useStayAwake';
 import { useGame } from '@/store/game';
 import { AppHeader } from '@/ui/AppHeader';
+import { GlassButton } from '@/ui/Glass';
+import { goBack, goMenu } from '@/ui/nav';
 import { Brief } from '@/ui/Brief';
 import { TicketButton } from '@/ui/decor';
 import { levelName } from '@/ui/LevelPicker';
-import { Button, Card, Container, ErrorText, Field, H1, Label, Muted, P, Page, Tag } from '@/ui/primitives';
+import { Card, Container, ErrorText, Field, H1, Label, Muted, P, Page, Tag } from '@/ui/primitives';
 
 const PACES: { id: Pace; name: string; note: string }[] = [
   { id: 'slow', name: 'Calm', note: 'Take your time. Nobody minds slow speech.' },
@@ -71,9 +73,9 @@ export default function Prep() {
   const hot = warning || goIn !== null;
 
   return (
-    <Page>
-      <AppHeader>
-        <Button title="Menu" variant="secondary" size="sm" onPress={() => router.replace('/menu')} />
+    <Page sticky>
+      <AppHeader glass back={() => goBack()}>
+        <GlassButton icon="home" label="Menu" onPress={goMenu} />
       </AppHeader>
       <Container style={[styles.main, wide && styles.mainWide]}>
         <View style={[styles.left, wide && styles.leftWide]}>

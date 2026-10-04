@@ -9,7 +9,9 @@ import { c, font, outline, shadow } from '@/design/theme';
 import { useLayout } from '@/hooks/useLayout';
 import { useGame } from '@/store/game';
 import { AppHeader } from '@/ui/AppHeader';
-import { Spark, Stamp, TrendArrow } from '@/ui/decor';
+import { GlassButton } from '@/ui/Glass';
+import { goBack } from '@/ui/nav';
+import { DashedLine, Spark, Stamp, TrendArrow } from '@/ui/decor';
 import { levelName } from '@/ui/LevelPicker';
 import { Button, Card, Chip, Container, ErrorText, H3, Label, Muted, P, Page } from '@/ui/primitives';
 
@@ -153,10 +155,9 @@ export default function Profile() {
       .filter((v): v is number => typeof v === 'number');
 
   return (
-    <Page>
-      <AppHeader>
-        <Button title="Menu" variant="secondary" size="sm" onPress={() => router.replace('/menu')} />
-        <Button title="Sign out" variant="secondary" size="sm" onPress={() => (signOut(), router.replace('/'))} />
+    <Page sticky>
+      <AppHeader glass back={() => goBack()}>
+        <GlassButton title="Sign out" onPress={() => (signOut(), router.replace('/'))} />
       </AppHeader>
       <Container style={[styles.main, !wide && styles.mainNarrow]}>
         <View style={[styles.row, !wide && styles.column]}>
@@ -275,6 +276,7 @@ export default function Profile() {
               <Muted>Tap a round to read its review again. Recordings are not stored — only the transcript and the marks.</Muted>
               {history.map((r) => (
                 <Pressable key={r.id} accessibilityRole="button" accessibilityLabel={`Open the review of ${r.title}`} onPress={() => open(r)} style={({ pressed }) => [styles.round, pressed && { backgroundColor: c.cream }]}>
+                  <DashedLine color={c.onInkMuted} style={styles.roundRule} />
                   <View style={styles.roundScore}>
                     <Text style={styles.roundTotal}>{r.total.toFixed(0)}</Text>
                   </View>
@@ -347,7 +349,8 @@ const styles = StyleSheet.create({
   habitRow: { flexDirection: 'row', alignItems: 'baseline', gap: 6 },
   habitValue: { fontFamily: font.display, fontSize: 30, lineHeight: 34, color: c.ink },
   habitUnit: { fontFamily: font.medium, fontSize: 13, color: c.graphite },
-  round: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 12, paddingHorizontal: 8, borderTopWidth: 2, borderTopColor: c.onInkMuted, borderStyle: 'dashed', borderRadius: 10, minHeight: 64 },
+  round: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 12, paddingHorizontal: 8, borderRadius: 10, minHeight: 64 },
+  roundRule: { position: 'absolute', top: 0, left: 0, right: 0 },
   roundScore: { width: 52, height: 52, borderRadius: 26, backgroundColor: c.orange, alignItems: 'center', justifyContent: 'center', ...outline },
   roundTotal: { fontFamily: font.display, fontSize: 20, lineHeight: 24, color: c.ink },
   roundTitle: { fontFamily: font.bold, fontSize: 17, lineHeight: 23, color: c.ink },

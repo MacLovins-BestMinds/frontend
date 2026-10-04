@@ -11,7 +11,7 @@ import { useLayout } from '@/hooks/useLayout';
 import { JURORS, JuryTable } from '@/scene/AudienceScene';
 import { useGame } from '@/store/game';
 import { AppHeader } from '@/ui/AppHeader';
-import { Bubble, Valance } from '@/ui/decor';
+import { Bubble, DashedLine, Valance } from '@/ui/decor';
 import { Button, Card, Container, ErrorText, H1, H3, Label, Muted, P, Page, Small } from '@/ui/primitives';
 
 const ANSWER_SEC = 30;
@@ -198,7 +198,8 @@ export default function Jury() {
         const score = scores[id];
         const now = question?.juror === id && score === undefined;
         return (
-          <View key={id} style={[styles.sheetRow, i > 0 && styles.sheetRule]}>
+          <View key={id} style={styles.sheetRow}>
+            {i > 0 ? <DashedLine color={c.onInkMuted} style={styles.sheetRule} /> : null}
             <View style={[styles.sheetDot, now && { backgroundColor: c.orange }, score !== undefined && { backgroundColor: c.ink }]}>
               <Text style={[styles.sheetDotText, score !== undefined && { color: c.onInk }]}>{asked >= 0 ? asked + 1 : i + 1}</Text>
             </View>
@@ -222,8 +223,8 @@ export default function Jury() {
   );
 
   return (
-    <Page>
-      <AppHeader />
+    <Page sticky>
+      <AppHeader glass />
       <Container style={styles.main}>
         <View style={styles.head}>
           <H1 style={!wide && styles.titleNarrow}>Jury questions</H1>
@@ -232,21 +233,23 @@ export default function Jury() {
         <View style={[styles.columns, wide && styles.columnsWide]}>
           <View style={[styles.left, wide && styles.leftWide]}>
             {/* ложа жюри: ламбрекен, стена с панелью и стол во всю ширину */}
-            <View style={styles.booth} onLayout={(e) => setBoothWidth(e.nativeEvent.layout.width)}>
-              <View style={styles.wainscot} />
-              {boothWidth > 0 && <Valance width={boothWidth} background="transparent" />}
-              <View style={[styles.boothTable, !wide && styles.boothTableNarrow]}>
-                <JuryTable speaking={speaking} />
-                {phase === 'question' && speakerAt >= 0 && (
-                  <Bubble text="question!" dark tilt={-6} style={{ top: wide ? -6 : -24, left: `${8 + speakerAt * 31}%` }} />
-                )}
-              </View>
-              <View style={styles.names}>
-                {JURORS.map((id) => (
-                  <Text key={id} style={[styles.name, speaking === id && styles.nameOn]}>
-                    {JUROR_NAME[id]}
-                  </Text>
-                ))}
+            <View style={styles.booth}>
+              <View style={styles.boothClip} onLayout={(e) => setBoothWidth(e.nativeEvent.layout.width)}>
+                <View style={styles.wainscot} />
+                {boothWidth > 0 && <Valance width={boothWidth} background="transparent" />}
+                <View style={[styles.boothTable, !wide && styles.boothTableNarrow]}>
+                  <JuryTable speaking={speaking} />
+                  {phase === 'question' && speakerAt >= 0 && (
+                    <Bubble text="question!" dark tilt={-6} style={{ top: wide ? -6 : -24, left: `${8 + speakerAt * 31}%` }} />
+                  )}
+                </View>
+                <View style={styles.names}>
+                  {JURORS.map((id) => (
+                    <Text key={id} style={[styles.name, speaking === id && styles.nameOn]}>
+                      {JUROR_NAME[id]}
+                    </Text>
+                  ))}
+                </View>
               </View>
             </View>
 
@@ -284,7 +287,8 @@ const styles = StyleSheet.create({
   leftWide: { flex: 1.7 },
   side: { gap: 20 },
   sideWide: { flex: 1 },
-  booth: { backgroundColor: c.paper, borderRadius: 24, overflow: 'hidden', ...outline, ...shadow(6) },
+  booth: { backgroundColor: c.paper, borderRadius: 24, ...outline, ...shadow(6) },
+  boothClip: { overflow: 'hidden', borderRadius: 22 },
   wainscot: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '46%', backgroundColor: '#F1E9C6', borderTopWidth: 2.5, borderTopColor: c.ink },
   boothTable: { marginHorizontal: 18, marginTop: 14 },
   boothTableNarrow: { marginHorizontal: 10, marginTop: 26 },
@@ -296,7 +300,7 @@ const styles = StyleSheet.create({
   questionWide: { fontSize: 26, lineHeight: 34 },
   sheet: { gap: 0, paddingVertical: 18 },
   sheetRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10 },
-  sheetRule: { borderTopWidth: 2, borderTopColor: c.onInkMuted, borderStyle: 'dashed' },
+  sheetRule: { position: 'absolute', top: 0, left: 0, right: 0 },
   sheetDot: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: c.paper, borderWidth: 2, borderColor: c.ink },
   sheetDotText: { fontFamily: font.bold, fontSize: 14, color: c.ink },
   sheetName: { fontFamily: font.bold, fontSize: 17, color: c.ink, flex: 1 },

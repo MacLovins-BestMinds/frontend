@@ -11,6 +11,7 @@ import { c, font, outline, shadow } from '@/design/theme';
 import { useLayout } from '@/hooks/useLayout';
 import { useGame } from '@/store/game';
 import { AppHeader } from '@/ui/AppHeader';
+import { goBack } from '@/ui/nav';
 import { TicketButton } from '@/ui/decor';
 import { Button, Card, Container, ErrorText, Field, H1, H3, Label, Muted, P, Page, Small } from '@/ui/primitives';
 
@@ -83,10 +84,8 @@ export default function OwnPitch() {
   };
 
   return (
-    <Page>
-      <AppHeader>
-        <Button title="Menu" variant="secondary" size="sm" onPress={() => router.replace('/menu')} />
-      </AppHeader>
+    <Page sticky>
+      <AppHeader glass back={() => goBack()} />
       <Container style={[styles.main, wide && styles.mainWide]}>
         <View style={[styles.col, wide && styles.colWide]}>
           <H1 style={!wide && styles.titleNarrow}>Your own pitch</H1>

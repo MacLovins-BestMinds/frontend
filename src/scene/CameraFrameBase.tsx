@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } fro
 import Svg, { Path } from 'react-native-svg';
 
 import { c, font, outline, shadow } from '@/design/theme';
-import { CameraIcon, Flower } from '@/ui/decor';
+import { CameraIcon, DashedRing, Flower } from '@/ui/decor';
 
 type FrameProps = { size?: number; tilt?: number; style?: StyleProp<ViewStyle>; children?: ReactNode; onFlip?: () => void };
 
@@ -19,7 +19,9 @@ export function Frame({ size = 136, tilt = -4, style, children, onFlip }: FrameP
   return (
     <View style={[styles.box, { width: size, height: size }, style]}>
       <View style={[styles.frame, shadow(4), { width: size, height: size, borderRadius: size / 2, transform: [{ rotate: `${tilt}deg` }] }]}>
-        <View style={[styles.stitch, { width: stitch, height: stitch, borderRadius: stitch / 2 }]} />
+        <View pointerEvents="none" style={{ width: stitch, height: stitch }}>
+          <DashedRing size={stitch} color={c.ink} strokeWidth={2} dash="3 3" />
+        </View>
         <View style={styles.flower}>
           <Flower size={size * 0.23} center={c.paper} />
         </View>
@@ -54,7 +56,6 @@ export function CameraPlaceholder({ text = 'camera' }: { text?: string }) {
 const styles = StyleSheet.create({
   box: { alignItems: 'center', justifyContent: 'center' },
   frame: { position: 'absolute', left: 0, top: 0, backgroundColor: c.orange, alignItems: 'center', justifyContent: 'center', ...outline },
-  stitch: { borderWidth: 2, borderStyle: 'dashed', borderColor: c.ink },
   lens: { backgroundColor: c.lens, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', gap: 4, ...outline },
   flower: { position: 'absolute', bottom: -12 },
   flip: { position: 'absolute', right: 0, top: 0, backgroundColor: c.paper, alignItems: 'center', justifyContent: 'center', ...outline, ...shadow(2) },

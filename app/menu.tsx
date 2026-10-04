@@ -9,7 +9,7 @@ import { c, font, formatDay, outline, shadow } from '@/design/theme';
 import { useLayout } from '@/hooks/useLayout';
 import { useGame } from '@/store/game';
 import { AppHeader, NickChip } from '@/ui/AppHeader';
-import { Tape, TrendArrow, Wheel } from '@/ui/decor';
+import { DashedLine, Tape, TrendArrow, Wheel } from '@/ui/decor';
 import { LevelPicker } from '@/ui/LevelPicker';
 import { Button, Card, Chip, Container, ErrorText, H1, H3, Label, Muted, P, Page, Small } from '@/ui/primitives';
 
@@ -90,6 +90,7 @@ export default function Menu() {
       <ErrorText>{error}</ErrorText>
       {leaders.length > 0 && (
         <View style={styles.leaders}>
+          <DashedLine color={c.ink} style={styles.leadersRule} />
           <Text style={styles.leadersTitle}>Today’s leaderboard</Text>
           {leaders.slice(0, wide ? 5 : 3).map((l, i) => (
             <View key={l.nick} style={styles.leader}>
@@ -198,7 +199,8 @@ const styles = StyleSheet.create({
   posterHead: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   posterTitle: { fontSize: 24, lineHeight: 30 },
   posterButton: { marginTop: 'auto' },
-  leaders: { borderTopWidth: 2, borderTopColor: c.ink, borderStyle: 'dashed', paddingTop: 12, gap: 8 },
+  leaders: { paddingTop: 14, gap: 8 },
+  leadersRule: { position: 'absolute', top: 0, left: 0, right: 0 },
   leadersTitle: { fontFamily: font.bold, fontSize: 15, color: c.ink },
   leader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   place: { width: 28, height: 28, borderRadius: 14, borderWidth: 2, borderColor: c.ink, alignItems: 'center', justifyContent: 'center' },
