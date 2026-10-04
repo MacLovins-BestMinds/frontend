@@ -2,7 +2,7 @@ import { create } from 'zustand';
 
 import { Platform } from 'react-native';
 
-import { onUnauthorized, setAuthToken } from '@/api/client';
+import { mediaUrl, onUnauthorized, setAuthToken } from '@/api/client';
 import type { Case, Delivery, Difficulty, Finish, HistoryRound, Pace, JuryAnswer, JuryQuestion, Mode, OwnPitchInput, Round, RoundReview, User } from '@/api/types';
 
 const SESSION_KEY = 'stage-zero-session';
@@ -120,7 +120,8 @@ export const useGame = create<GameState>((set) => ({
       juryQuestions: review.jury_questions,
       juryAnswers: review.jury_answers,
       result: review.result,
-      pitchAudioUri: null,
+      // звук хранится на сервере — старое выступление можно переслушать; видео остаётся только у только что сыгранного
+      pitchAudioUri: review.audio_url ? mediaUrl(review.audio_url) : null,
       pitchVideoUri: null,
     }),
   setJuryQuestions: (juryQuestions) => set({ juryQuestions }),

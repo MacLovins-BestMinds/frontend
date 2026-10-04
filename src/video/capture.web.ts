@@ -34,6 +34,8 @@ export function startCapture(_video: HTMLVideoElement, stream: MediaStream, { cl
         videoKeyFrameIntervalDuration: KEYFRAME_MS,
       } as MediaRecorderOptions);
       recorder.ondataavailable = (e) => e.data.size > 0 && chunks.push(e.data);
+      // начало видео — когда запись реально пошла (событие start), а не когда её попросили
+      recorder.onstart = () => (videoOffset = clock());
       recorder.start(1000);
       videoOffset = clock();
     } catch (e) {
