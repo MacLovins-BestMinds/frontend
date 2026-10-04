@@ -16,8 +16,8 @@ import { Button, Card, Container, ErrorText, Field, H2, H3, Label, Muted, P, Sma
 
 const STEPS = [
   { n: '1', title: 'You get a topic', short: 'The wheel gives you a topic', text: 'The wheel picks a simple everyday topic: your favourite food, cats or dogs, your city. Spin as many times as you like.' },
-  { n: '2', title: '5 minutes to prepare', short: '5 minutes to prepare', text: 'Read the brief, see what is expected of you, jot down notes. No slides.' },
-  { n: '3', title: 'You pitch and answer the jury', short: 'Pitch to the room, then jury questions', text: '1–3 minutes in front of the room, then one question from each jury member. At the end — a review and a rank.' },
+  { n: '2', title: 'Time to prepare', short: 'A few minutes to prepare', text: 'Read the brief, look things up in other tabs, jot down notes. Need longer? Add time — we ping you when it is up.' },
+  { n: '3', title: 'You pitch and answer the jury', short: 'Pitch to the room, then jury questions', text: '1–3 minutes in front of the room, or as long as you choose, then one question from each jury member. At the end — a review and a rank.' },
 ];
 
 const REACTIONS = [

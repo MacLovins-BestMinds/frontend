@@ -58,6 +58,13 @@ export function formatTime(sec: number): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
+/** Сколько говорить: «20–45 sec», «1–3 min» или «1:30–4:00», если минуты не целые. */
+export function formatRange(minSec: number, maxSec: number): string {
+  if (maxSec < 60) return `${minSec}–${maxSec} sec`;
+  if (minSec % 60 === 0 && maxSec % 60 === 0) return `${minSec / 60}–${maxSec / 60} min`;
+  return `${formatTime(minSec)}–${formatTime(maxSec)}`;
+}
+
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 /** «2026-10-03» → «October 3». */

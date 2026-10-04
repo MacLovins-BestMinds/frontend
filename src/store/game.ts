@@ -3,7 +3,7 @@ import { create } from 'zustand';
 import { Platform } from 'react-native';
 
 import { mediaUrl, onUnauthorized, setAuthToken } from '@/api/client';
-import type { Case, Delivery, Difficulty, Finish, HistoryRound, Pace, JuryAnswer, JuryQuestion, Mode, OwnPitchInput, Round, RoundReview, User } from '@/api/types';
+import type { Case, Delivery, Difficulty, Finish, HistoryRound, Pace, PitchLimits, JuryAnswer, JuryQuestion, Mode, OwnPitchInput, Round, RoundReview, User } from '@/api/types';
 
 const SESSION_KEY = 'stage-zero-session';
 
@@ -47,6 +47,9 @@ type GameState = {
   /** Уровень сложности раунда. */
   difficulty: Difficulty;
   setDifficulty: (difficulty: Difficulty) => void;
+  /** Своя длина питча в секундах; null — как задаёт уровень. Это настройка игрока, между раундами не сбрасывается. */
+  pitchLimits: PitchLimits | null;
+  setPitchLimits: (limits: PitchLimits | null) => void;
   signIn: (user: User, token: string) => void;
   signOut: () => void;
   openReview: (review: RoundReview) => void;
@@ -84,6 +87,7 @@ export const useGame = create<GameState>((set) => ({
   camera: 'user',
   pace: 'normal',
   difficulty: 'easy',
+  pitchLimits: null,
   juryQuestions: [],
   pitchAudioUri: null,
   pitchVideoUri: null,
@@ -100,6 +104,7 @@ export const useGame = create<GameState>((set) => ({
   setCamera: (camera) => set({ camera }),
   setPace: (pace) => set({ pace }),
   setDifficulty: (difficulty) => set({ difficulty }),
+  setPitchLimits: (pitchLimits) => set({ pitchLimits }),
   signIn: (user, token) => {
     setAuthToken(token);
     saveSession({ user, token });
@@ -163,3 +168,8 @@ export const useGame = create<GameState>((set) => ({
 
 // сервер перестал принимать токен — выходим, экраны сами вернут на главную
 onUnauthorized(() => useGame.getState().signOut());
+
+/** Сколько говорить в этом раунде: своя длина игрока или лимиты уровня, которые прислал сервер. */
+export function pitchLimitsFor(round: Round | null, custom: PitchLimits | null): PitchLimits {
+  return custom ?? { min: round?.pitch_min_sec ?? 60, max: round?.pitch_max_sec ?? 180 };
+}

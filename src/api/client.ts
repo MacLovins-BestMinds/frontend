@@ -9,6 +9,7 @@ import type {
   Difficulty,
   FitSlides,
   Pace,
+  PitchLimits,
   PickedFile,
   Signup,
   Delivery,
@@ -176,7 +177,7 @@ export const api = {
       ? mocked(mocks.refine(mode))
       : post<RefineResponse>('/api/ai/refine', { text, audience, mode }),
 
-  delivery: async (roundId: string, audioUri: string | null, gaze: GazePoint[] = [], notes = '', pace: Pace = 'normal') => {
+  delivery: async (roundId: string, audioUri: string | null, gaze: GazePoint[] = [], notes = '', pace: Pace = 'normal', limits: PitchLimits | null = null) => {
     if (env.useMocks) return mocked(mocks.delivery());
     if (!audioUri) throw new Error('There is no recording of the pitch');
     const form = new FormData();
@@ -185,6 +186,11 @@ export const api = {
     // заметки с подготовки: ИИ подскажет, что из запланированного так и не прозвучало
     if (notes.trim()) form.append('notes', notes.trim());
     form.append('pace', pace);
+    // своя длина питча: тайминг оценивается по ней, а не по лимитам уровня
+    if (limits) {
+      form.append('min_sec', String(limits.min));
+      form.append('max_sec', String(limits.max));
+    }
     return request<Delivery>(`/api/ai/rounds/${roundId}/delivery`, { method: 'POST', body: form });
   },
 

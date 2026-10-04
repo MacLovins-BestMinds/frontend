@@ -12,6 +12,7 @@ import { JURORS, JuryTable } from '@/scene/AudienceScene';
 import { useGame } from '@/store/game';
 import { AppHeader } from '@/ui/AppHeader';
 import { Bubble, DashedLine, Valance } from '@/ui/decor';
+import { Pending } from '@/ui/Pending';
 import { Button, Card, Container, ErrorText, H1, H3, Label, Muted, P, Page, Small } from '@/ui/primitives';
 
 const ANSWER_SEC = 30;
@@ -159,7 +160,6 @@ export default function Jury() {
 
   const actions = (
     <>
-      {phase === 'loading' && !error && <Muted>The jury is conferring…</Muted>}
       {phase === 'loading' && error !== '' && <Button title="Try again" variant="secondary" onPress={load} />}
       {phase === 'answering' && (
         <View style={styles.countdown}>
@@ -253,7 +253,18 @@ export default function Jury() {
               </View>
             </View>
 
-            {question && (
+            {phase === 'loading' && !error && (
+              <Pending
+                title="The jury is conferring"
+                steps={['Your pitch is scored', 'The jury reads your pitch and records three questions', 'You answer — 30 seconds each']}
+                current={1}
+                note="Usually 10–20 seconds. The first question plays as soon as it is ready."
+              />
+            )}
+            {phase === 'finishing' && (
+              <Pending title="Adding up your result" steps={['Your answers are scored', 'Final score and rank']} current={1} />
+            )}
+            {question && phase !== 'finishing' && (
               <Card style={styles.questionCard}>
                 <Label>
                   Question {index + 1} of {questions.length} · {JUROR_NAME[question.juror] ?? question.juror}
