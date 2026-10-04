@@ -1,6 +1,6 @@
-import { env } from '@/config/env';
 
-import type { LiveEvent, LiveHandlers } from './live';
+import type { LiveHandlers } from './live';
+import { openLiveSocket } from './liveSocket';
 import { acquireMic, releaseMic } from './mic.web';
 
 export type { LiveEvent, LiveHandlers } from './live';
@@ -17,24 +17,18 @@ const NOISE_WINDOW = 12; // фон — самый тихий кадр за по�
  * PCM 16 кГц, моно, 16 бит уходят в WS /api/ai/live, откуда приходят события (паразит, долгая пауза, темп).
  * roundId = null — без сокета (моки): зал реагирует только на голос. Возвращает функцию остановки.
  */
-export function startLive(roundId: string | null, { onEvent, onVoice }: LiveHandlers, pace: 'slow' | 'normal' | 'fast' = 'normal'): () => void {
+export function startLive(
+  roundId: string | null,
+  { onEvent, onVoice }: LiveHandlers,
+  pace: 'slow' | 'normal' | 'fast' = 'normal',
+  maxSec?: number,
+): () => void {
   let stopped = false;
   let ctx: AudioContext | null = null;
   let holdsMic = true;
   const quietest: number[] = []; // самый тихий кадр каждого из последних кусков
-  let ws: WebSocket | null = null;
-  if (roundId) {
-    const url = env.apiUrl.replace(/\/$/, '').replace(/^http/, 'ws') + `/api/ai/live?round_id=${encodeURIComponent(roundId)}&pace=${pace}`;
-    ws = new WebSocket(url);
-    ws.binaryType = 'arraybuffer';
-    ws.onmessage = (m) => {
-      try {
-        onEvent(JSON.parse(m.data as string) as LiveEvent);
-      } catch {
-        // не JSON — пропускаем
-      }
-    };
-  }
+  // сокет переподключается сам; null — без сокета (моки)
+  const ws = roundId ? openLiveSocket(roundId, pace, maxSec, onEvent) : null;
 
   acquireMic()
     .then((s) => {
@@ -57,7 +51,7 @@ export function startLive(roundId: string | null, { onEvent, onVoice }: LiveHand
         quietest.push(quiet);
         if (quietest.length > NOISE_WINDOW) quietest.shift();
         onVoice(rms > Math.max(VOICE_MIN_RMS, Math.min(...quietest) * VOICE_OVER_NOISE));
-        if (ws?.readyState !== WebSocket.OPEN) return;
+        if (!ws) return;
         const pcm = new Int16Array(input.length);
         for (let i = 0; i < input.length; i++) pcm[i] = Math.max(-1, Math.min(1, input[i])) * 0x7fff;
         ws.send(pcm.buffer);
@@ -75,7 +69,7 @@ export function startLive(roundId: string | null, { onEvent, onVoice }: LiveHand
     if (holdsMic) releaseMic();
     holdsMic = false;
     ctx?.close().catch(() => {});
-    if (ws && ws.readyState <= WebSocket.OPEN) ws.close();
+    ws?.close();
   };
 }
 
