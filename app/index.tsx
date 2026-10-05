@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { Redirect, router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -91,7 +91,7 @@ export default function Landing() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const start = () => (user ? router.push('/menu') : setLoginOpen(true));
+  const start = () => setLoginOpen(true);
   const jump = (id: string) => scroll.current?.scrollTo({ y: anchors.current[id] ?? 0, animated: true });
   const mark = (id: string) => (e: { nativeEvent: { layout: { y: number } } }) => {
     anchors.current[id] = e.nativeEvent.layout.y;
@@ -103,7 +103,7 @@ export default function Landing() {
     setPending(null);
     setPassword('');
     setCode('');
-    router.push('/menu');
+    router.replace('/menu');
   };
   const withGoogle = async (idToken: string) => {
     setLoading(true);
@@ -159,6 +159,9 @@ export default function Landing() {
     }
   };
 
+  // кто уже вошёл, лендинг не видит: сразу вкладки (вход помнится между запусками, см. src/store/session.ts)
+  if (user) return <Redirect href="/menu" />;
+
   const validEmail = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim());
   const canEnter = pending ? code.trim().length >= 4 : validEmail && password.length >= 6 && (!creating || nick.trim().length >= 2);
 
@@ -173,7 +176,7 @@ export default function Landing() {
         contentContainerStyle={[styles.grow, { paddingTop: insets.top, paddingBottom: insets.bottom, paddingLeft: insets.left, paddingRight: insets.right }]}
         scrollIndicatorInsets={{ top: insets.top, bottom: insets.bottom }}>
         <AppHeader home="/">
-          <Button title={user ? tc('menu') : t('signIn')} variant="secondary" size="sm" onPress={start} style={wide ? shadow(3) : undefined} />
+          <Button title={t('signIn')} variant="secondary" size="sm" onPress={start} style={wide ? shadow(3) : undefined} />
         </AppHeader>
 
         {/* Первый экран */}

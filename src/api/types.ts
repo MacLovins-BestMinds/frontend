@@ -37,7 +37,7 @@ export type Round = {
 };
 
 export type TimelineEvent = {
-  type: 'filler' | 'repeat' | 'profanity' | 'long_pause' | 'hesitation' | 'pace' | 'gaze_off' | 'good_pause';
+  type: 'filler' | 'repeat' | 'stumble' | 'weak_phrase' | 'profanity' | 'long_pause' | 'hesitation' | 'pace' | 'gaze_off' | 'energy' | 'good_pause';
   t: number;
   text: string;
   /** Место в transcript (символы). start === end — точка между словами (пауза, темп). */
@@ -71,8 +71,19 @@ export type Delivery = {
     fillers: number;
     fillers_per_min: number;
     long_pauses: number;
+    profanity?: number;
     /** Доля времени со взглядом в зал; null — взгляд не измерялся. */
     gaze_on_ratio: number | null;
+    /** Запинки: оборванные и начатые заново слова. У старых разборов нет. */
+    stumbles?: number;
+    /** Неуверенные фразы: смягчения, извинения, вялое начало, слабый финал. У старых разборов нет. */
+    weak_phrases?: number;
+    /** Разброс высоты голоса по словам, полутоны; null — не измерялся. */
+    pitch_variation?: number | null;
+    /** Голос монотонный; null — слов мало или не измерялся. */
+    monotone?: boolean | null;
+    /** Сколько фраз затухли к концу. */
+    fades?: number;
   };
   events: TimelineEvent[];
   tips: string[];
@@ -154,6 +165,8 @@ export type HistoryRound = {
   fillers_per_min: number | null;
   long_pauses: number | null;
   repeats: number | null;
+  /** Неуверенные фразы за питч; у старых раундов и раундов без разбора — null. */
+  weak_phrases?: number | null;
   gaze_on_ratio: number | null;
 };
 

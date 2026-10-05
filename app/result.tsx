@@ -11,7 +11,8 @@ import { useGame } from '@/store/game';
 import { AppHeader } from '@/ui/AppHeader';
 import { BetterVersion } from '@/ui/BetterVersion';
 import { GlassButton } from '@/ui/Glass';
-import { goMenu } from '@/ui/nav';
+import { Highlights } from '@/ui/Highlights';
+import { goMenu, goTab } from '@/ui/nav';
 import { DashedLine, Paddle, Stamp } from '@/ui/decor';
 import type { PitchPlayerHandle } from '@/ui/PitchPlayer';
 import { Recording } from '@/ui/Recording';
@@ -39,6 +40,16 @@ export default function Result() {
       }
     : { content: undefined, delivery: undefined };
   const pron = delivery?.pronunciation;
+  const tipsCard = delivery ? (
+    <Card tone="accent">
+      <H3>{t('threeTips')}</H3>
+      {delivery.tips.map((tip, i) => (
+        <P key={tip}>
+          {i + 1}. {tip}
+        </P>
+      ))}
+    </Card>
+  ) : null;
 
 
   return (
@@ -77,70 +88,69 @@ export default function Result() {
         </View>
 
         {delivery && (
-          <View style={[styles.columns, wide && styles.columnsWide]}>
-            <View style={[styles.left, wide && styles.leftWide]}>
-              <Recording
-                ref={recording}
-                flow={insights.flow}
-                onPlay={() => polished.current?.pause()}
-                delivery={delivery}
-                audioUri={pitchAudioUri}
-                videoUri={pitchVideoUri}
-                videoOffset={pitchVideoOffset}
-                duration={duration}
-                wide={wide}
-                noRecording={reviewOf ? t('noRecordingHistory') : t('noRecording')}
-              />
-            </View>
+          <>
+            {/* самое полезное — коротко и первым: на телефоне до записи и расшифровки, на компьютере — в правой колонке */}
+            {!wide && <Highlights delivery={delivery} wide={wide} />}
+            {!wide && tipsCard}
+            <View style={[styles.columns, wide && styles.columnsWide]}>
+              <View style={[styles.left, wide && styles.leftWide]}>
+                <Recording
+                  ref={recording}
+                  flow={insights.flow}
+                  onPlay={() => polished.current?.pause()}
+                  delivery={delivery}
+                  audioUri={pitchAudioUri}
+                  videoUri={pitchVideoUri}
+                  videoOffset={pitchVideoOffset}
+                  duration={duration}
+                  wide={wide}
+                  noRecording={reviewOf ? t('noRecordingHistory') : t('noRecording')}
+                />
+              </View>
 
-            <View style={[styles.side, wide && styles.sideWide]}>
-              <Card tone="accent">
-                <H3>{t('threeTips')}</H3>
-                {delivery.tips.map((tip, i) => (
-                  <P key={tip}>
-                    {i + 1}. {tip}
-                  </P>
-                ))}
-              </Card>
-              <BetterVersion ref={polished} better={insights.better} onPlay={() => recording.current?.pause()} />
-              {juryAnswers.length > 0 && (
-                <Card flat>
-                  <H3>{t('juryQuestions')}</H3>
-                  {juryAnswers.map((a, i) => (
-                    <View key={i} style={styles.answer}>
-                      <Text style={styles.answerScore}>{a.score}</Text>
-                      <View style={styles.grow}>
-                        {juryQuestions[i] ? <P style={styles.answerQuestion}>{juryQuestions[i].text}</P> : null}
-                        <Muted style={styles.answerComment}>{a.comment}</Muted>
+              <View style={[styles.side, wide && styles.sideWide]}>
+                {wide && <Highlights delivery={delivery} wide={wide} />}
+                {wide && tipsCard}
+                <BetterVersion ref={polished} better={insights.better} onPlay={() => recording.current?.pause()} />
+                {juryAnswers.length > 0 && (
+                  <Card flat>
+                    <H3>{t('juryQuestions')}</H3>
+                    {juryAnswers.map((a, i) => (
+                      <View key={i} style={styles.answer}>
+                        <Text style={styles.answerScore}>{a.score}</Text>
+                        <View style={styles.grow}>
+                          {juryQuestions[i] ? <P style={styles.answerQuestion}>{juryQuestions[i].text}</P> : null}
+                          <Muted style={styles.answerComment}>{a.comment}</Muted>
+                        </View>
                       </View>
-                    </View>
-                  ))}
-                </Card>
-              )}
-              {pron && (
-                <Card flat>
-                  <H3>{t('pronunciation')}</H3>
-                  <P>
-                    {t('pronOverall', { overall: pron.overall_score, accuracy: pron.accuracy_score, fluency: pron.fluency_score })}
-                    {pron.prosody_score !== null ? t('pronProsody', { prosody: pron.prosody_score }) : ''}.
-                  </P>
-                  {pron.words.length > 0 && <Muted>{t('pronWords', { words: pron.words.slice(0, 6).map((w) => w.word).join(', ') })}</Muted>}
-                  {pron.tips.map((tip) => (
-                    <Muted key={tip}>• {tip}</Muted>
-                  ))}
-                </Card>
-              )}
+                    ))}
+                  </Card>
+                )}
+                {pron && (
+                  <Card flat>
+                    <H3>{t('pronunciation')}</H3>
+                    <P>
+                      {t('pronOverall', { overall: pron.overall_score, accuracy: pron.accuracy_score, fluency: pron.fluency_score })}
+                      {pron.prosody_score !== null ? t('pronProsody', { prosody: pron.prosody_score }) : ''}.
+                    </P>
+                    {pron.words.length > 0 && <Muted>{t('pronWords', { words: pron.words.slice(0, 6).map((w) => w.word).join(', ') })}</Muted>}
+                    {pron.tips.map((tip) => (
+                      <Muted key={tip}>• {tip}</Muted>
+                    ))}
+                  </Card>
+                )}
+              </View>
             </View>
-          </View>
+          </>
         )}
 
         <View style={[styles.actions, !wide && styles.actionsNarrow]}>
           {reviewOf ? (
-            <Button title={t('backToProgress')} onPress={() => router.replace('/profile')} />
+            <Button title={t('backToProgress')} onPress={() => goTab('/profile')} />
           ) : (
             <Button title={t('another')} onPress={() => router.replace('/wheel')} />
           )}
-          <Button title={reviewOf ? tc('menu') : t('yourProgress')} variant="secondary" onPress={() => (reviewOf ? goMenu() : router.replace('/profile'))} />
+          <Button title={reviewOf ? tc('menu') : t('yourProgress')} variant="secondary" onPress={() => (reviewOf ? goMenu() : goTab('/profile'))} />
         </View>
       </Container>
     </Page>

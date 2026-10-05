@@ -11,8 +11,6 @@ import { translate, useLang, useT } from '@/i18n';
 import { rankLabel } from '@/i18n/ranks';
 import { useGame } from '@/store/game';
 import { AppHeader } from '@/ui/AppHeader';
-import { GlassButton } from '@/ui/Glass';
-import { goBack } from '@/ui/nav';
 import { DashedLine, Spark, Stamp, TrendArrow } from '@/ui/decor';
 import { levelName } from '@/ui/LevelPicker';
 import { Button, Card, Chip, Container, ErrorText, H3, Label, Muted, P, Page } from '@/ui/primitives';
@@ -169,9 +167,8 @@ export default function Profile() {
 
   return (
     <Page sticky>
-      <AppHeader glass back={() => goBack()}>
-        <GlassButton title={t('signOut')} onPress={() => (signOut(), router.replace('/'))} />
-      </AppHeader>
+      {/* профиль — вкладка: «назад» ей не нужен, а выход лежит внизу страницы, подальше от случайного нажатия */}
+      <AppHeader glass nav="profile" />
       <Container style={[styles.main, !wide && styles.mainNarrow]}>
         <View style={[styles.row, !wide && styles.column]}>
           <View style={[styles.hero, wide && styles.heroWide]}>
@@ -316,13 +313,19 @@ export default function Profile() {
             </Card>
           </>
         )}
+
+        <View style={styles.account}>
+          <Muted>{t('signedInAs', { nick: user.nick })}</Muted>
+          <Button title={t('signOut')} variant="secondary" size="sm" onPress={() => (signOut(), router.replace('/'))} />
+        </View>
       </Container>
     </Page>
   );
 }
 
 const styles = StyleSheet.create({
-  main: { paddingTop: 12, paddingBottom: 140, gap: 28 },
+  main: { paddingTop: 12, paddingBottom: 48, gap: 28 },
+  account: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingTop: 8 },
   mainNarrow: { gap: 20 },
   grow: { flex: 1 },
   row: { flexDirection: 'row', alignItems: 'stretch', gap: 28 },
