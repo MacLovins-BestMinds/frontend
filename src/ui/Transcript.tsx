@@ -157,12 +157,10 @@ type Props = {
   noRecording: string;
   /** Запись заиграла — можно остановить другой плеер. */
   onPlay?: () => void;
-  /** Где своя запись текста и играет ли она — для нарезки ошибок и хода мысли. */
+  /** Где своя запись текста и играет ли она — для хода мысли. */
   onTime?: (seconds: number, playing: boolean) => void;
   /** Ещё отметки на дорожку своего плеера — моменты хода мысли. */
   extraMarks?: PlayerMark[];
-  /** Что показать сразу под своим плеером — нарезку ошибок. */
-  aside?: ReactNode;
   /**
    * Время ведёт видео со звуком: своего плеера у текста нет, слово подсвечивается по видео,
    * а нажатие на слово или отметку перематывает видео.
@@ -175,7 +173,7 @@ type Props = {
  * подсвечено. Нажатие на слово или отметку перематывает запись туда.
  */
 export const Transcript = forwardRef<TranscriptHandle, Props>(function Transcript(
-  { delivery, audioUri, duration, wide, noRecording, onPlay, onTime, extraMarks, aside, media },
+  { delivery, audioUri, duration, wide, noRecording, onPlay, onTime, extraMarks, media },
   ref,
 ) {
   const t = useT('review');
@@ -273,7 +271,6 @@ export const Transcript = forwardRef<TranscriptHandle, Props>(function Transcrip
               if (playing && !now.playing) onPlay?.();
             }}
           />
-          {aside}
           <Small>{words.length ? t('audioWords') : t('audioMarks')}</Small>
         </>
       ) : (

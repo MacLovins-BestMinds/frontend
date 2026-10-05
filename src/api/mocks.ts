@@ -100,7 +100,7 @@ function after<T>(key: string, ms: number, pending: T, ready: () => T): T {
 }
 
 const silence: Record<number, string> = {};
-/** Беззвучная запись WAV нужной длины: плеер, переходы и нарезка работают и без бэкенда. */
+/** Беззвучная запись WAV нужной длины: плеер и переходы по тексту работают и без бэкенда. */
 function silentWav(seconds: number): string {
   if (silence[seconds]) return silence[seconds];
   const rate = 8000;

@@ -43,7 +43,7 @@ function watchLength(el: HTMLMediaElement, onLength: (seconds: number) => void):
  * Звукозаписи нет — видео играет со своим звуком и само ведёт время.
  */
 export const PitchVideo = forwardRef<PitchPlayerHandle, PitchVideoProps>(function PitchVideo(
-  { uri, offset, fallbackDuration, marks, notes, onPlay, onTime, audioUri, overlay },
+  { uri, offset, fallbackDuration, marks, notes, onPlay, onTime, audioUri },
   ref,
 ) {
   const video = useRef<HTMLVideoElement | null>(null);
@@ -81,22 +81,22 @@ export const PitchVideo = forwardRef<PitchPlayerHandle, PitchVideoProps>(functio
     };
   }, [audioUri]);
 
-  // играет ли запись — по событиям ведущего плеера
+  // играет ли запись — по событиям ведущего плеера; звук встал — встаёт и картинка
   useEffect(() => {
     const m = master();
     if (!m) return;
-    const sync = () => setPlaying(!m.paused && !m.ended);
-    const ended = () => {
-      sync();
-      video.current?.pause();
+    const sync = () => {
+      const on = !m.paused && !m.ended;
+      setPlaying(on);
+      if (!on && withAudio) video.current?.pause();
     };
     m.addEventListener('play', sync);
     m.addEventListener('pause', sync);
-    m.addEventListener('ended', ended);
+    m.addEventListener('ended', sync);
     return () => {
       m.removeEventListener('play', sync);
       m.removeEventListener('pause', sync);
-      m.removeEventListener('ended', ended);
+      m.removeEventListener('ended', sync);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [withAudio]);
@@ -116,7 +116,9 @@ export const PitchVideo = forwardRef<PitchPlayerHandle, PitchVideoProps>(functio
       if (withAudio && v) {
         const target = t - offset;
         const inside = target >= 0 && (videoLength <= 0 || target < videoLength);
-        if (!inside) {
+        // звук уже на паузе, а событие pause до React ещё не дошло: без этой проверки кадр запустил бы картинку снова
+        const live = !!audio.current && !audio.current.paused && !audio.current.ended;
+        if (!inside || !live) {
           if (!v.paused) v.pause();
         } else {
           if (v.paused) v.play().catch(() => {});
@@ -199,12 +201,11 @@ export const PitchVideo = forwardRef<PitchPlayerHandle, PitchVideoProps>(functio
             onClick: toggle,
             style: { position: 'absolute', width: '100%', height: '100%', objectFit: 'contain', cursor: 'pointer' },
           })}
-          {overlay ??
-            (note ? (
-              <View style={styles.note}>
-                <Text style={styles.noteText}>{note}</Text>
-              </View>
-            ) : null)}
+          {note ? (
+            <View style={styles.note}>
+              <Text style={styles.noteText}>{note}</Text>
+            </View>
+          ) : null}
         </View>
       </View>
       <PlayerBar playing={playing} position={position} duration={duration} marks={marks} onToggle={toggle} onSeek={seek} />

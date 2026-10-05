@@ -1,7 +1,7 @@
 import { useEvent } from 'expo';
 import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import { useVideoPlayer, VideoView } from 'expo-video';
-import { forwardRef, useEffect, useImperativeHandle, useRef, type ReactNode } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { c, font, outline, shadow } from '@/design/theme';
@@ -23,8 +23,6 @@ export type PitchVideoProps = {
   onTime?: (seconds: number, playing: boolean) => void;
   /** Звукозапись раунда. В приложении видео пишется без звука, звук играет вместе с ним и ведёт время. */
   audioUri?: string | null;
-  /** Слой поверх кадра (подписи нарезки ошибок); пока он есть, подписи notes не показываются. */
-  overlay?: ReactNode;
 };
 
 const TICK_SEC = 0.05;
@@ -43,7 +41,7 @@ const RATE_MAX = 0.15;
  * Перемотка, пауза и старт идут в оба плеера сразу.
  */
 export const PitchVideo = forwardRef<PitchPlayerHandle, PitchVideoProps>(function PitchVideo(
-  { uri, offset, fallbackDuration, marks, notes, onPlay, onTime, audioUri, overlay },
+  { uri, offset, fallbackDuration, marks, notes, onPlay, onTime, audioUri },
   ref,
 ) {
   const t = useT('review');
@@ -155,12 +153,11 @@ export const PitchVideo = forwardRef<PitchPlayerHandle, PitchVideoProps>(functio
           <View style={styles.clip}>
             <VideoView player={video} style={StyleSheet.absoluteFill} contentFit="contain" nativeControls={false} pointerEvents="none" />
           </View>
-          {overlay ??
-            (note ? (
-              <View style={styles.note}>
-                <Text style={styles.noteText}>{note}</Text>
-              </View>
-            ) : null)}
+          {note ? (
+            <View style={styles.note}>
+              <Text style={styles.noteText}>{note}</Text>
+            </View>
+          ) : null}
         </Pressable>
       </View>
       <PlayerBar playing={playing} position={position} duration={duration} marks={marks} onToggle={toggle} onSeek={seek} />
