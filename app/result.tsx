@@ -2,8 +2,8 @@ import { Redirect, router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
-import { api } from '@/api/client';
-
+import { api, mediaUrl } from '@/api/client';
+import type { Mode, RoundReview } from '@/api/types';
 import { c, font, formatDate } from '@/design/theme';
 import { useReviewInsights } from '@/hooks/useInsights';
 import { useLayout } from '@/hooks/useLayout';
@@ -24,29 +24,63 @@ export default function Result() {
   const tc = useT('common');
   const { wide } = useLayout();
   const user = useGame((s) => s.user);
-  const { result, delivery, juryAnswers, juryQuestions, pitchAudioUri, pitchVideoUri, pitchVideoOffset, mode, reviewOf, round, flow, betterVersion, ownPitch, openReview, startOwnPitch } = useGame();
+  const live = useGame();
   // Разбор из истории открывается по адресу /result?round=<id>: его можно обновить в браузере, и он грузится сам.
   // Без round — разбор только что сыгранного раунда (из памяти).
   const { round: historyId } = useLocalSearchParams<{ round?: string }>();
-  const history = !!historyId || !!reviewOf;
+  const history = !!historyId;
+  // разбор из истории живёт только на этом экране: открыть его не значит тронуть текущий раунд —
+  // незаконченный раунд остаётся, и «Главная» по-прежнему предлагает его продолжить
+  const [review, setReview] = useState<RoundReview | null>(null);
   const [loadError, setLoadError] = useState('');
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     // без входа экран уходит на лендинг — разбор у сервера не спрашиваем
-    if (!user || !historyId || useGame.getState().reviewOf?.id === historyId) return;
+    if (!user || !historyId) return;
     let alive = true;
     setLoadError('');
     api
       .roundReview(historyId)
-      .then((review) => alive && openReview(review))
+      .then((loaded) => alive && setReview(loaded))
       .catch((e: Error) => alive && setLoadError(t('errOpen', { message: e.message })));
     return () => {
       alive = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, historyId, attempt]);
+  const old = history && review?.round.id === historyId ? review : null;
+  const shown = old
+    ? {
+        id: old.round.id,
+        result: old.result,
+        delivery: old.delivery,
+        juryAnswers: old.jury_answers,
+        juryQuestions: old.jury_questions,
+        mode: old.round.mode as Mode,
+        // звук хранится на сервере — старое выступление можно переслушать; видео есть только у только что сыгранного
+        pitchAudioUri: old.audio_url ? mediaUrl(old.audio_url) : null,
+        pitchVideoUri: null,
+        pitchVideoOffset: 0,
+        flow: old.flow ?? null,
+        betterVersion: old.better_version ?? null,
+      }
+    : {
+        id: live.round?.round_id ?? null,
+        // разбор из истории ещё грузится — данные текущего раунда здесь не показываем и не дозапрашиваем
+        result: history ? null : live.result,
+        delivery: history ? null : live.delivery,
+        juryAnswers: live.juryAnswers,
+        juryQuestions: live.juryQuestions,
+        mode: live.mode,
+        pitchAudioUri: live.pitchAudioUri,
+        pitchVideoUri: live.pitchVideoUri,
+        pitchVideoOffset: live.pitchVideoOffset,
+        flow: live.flow,
+        betterVersion: live.betterVersion,
+      };
+  const { result, delivery, juryAnswers, juryQuestions, mode, pitchAudioUri, pitchVideoUri, pitchVideoOffset } = shown;
   // ход мысли и питч без запинок готовятся на сервере в фоне: у раунда из истории могут прийти готовыми
-  const insights = useReviewInsights(delivery ? (reviewOf?.id ?? round?.round_id ?? null) : null, flow, betterVersion);
+  const insights = useReviewInsights(delivery ? shown.id : null, shown.flow, shown.betterVersion);
   // играет что-то одно: запись выступления или озвучка без запинок
   const recording = useRef<PitchPlayerHandle>(null);
   const polished = useRef<PitchPlayerHandle>(null);
@@ -60,7 +94,7 @@ export default function Result() {
 
   if (!user) return <Redirect href="/" />;
   // разбор из истории ещё грузится (или не загрузился) — шапка с «назад» уже на месте
-  if (historyId && reviewOf?.id !== historyId) {
+  if (history && !old) {
     return (
       <Page sticky>
         <AppHeader corner={corner} />
@@ -81,8 +115,8 @@ export default function Result() {
 
   /** Следующий раунд: свой питч — тот же текст ещё раз, иначе — колесо. Экран разбора заменяется следующим. */
   const again = () => {
-    if (mode === 'own' && ownPitch) {
-      startOwnPitch(ownPitch);
+    if (live.mode === 'own' && live.ownPitch) {
+      live.startOwnPitch(live.ownPitch);
       router.replace('/prep');
     } else router.replace('/wheel');
   };
@@ -113,7 +147,7 @@ export default function Result() {
       <Container style={styles.main}>
         <View style={styles.head}>
           <H1 style={!wide && styles.titleNarrow}>{wide ? t('title') : t('titleShort')}</H1>
-          {history && reviewOf && <Muted>{t('fromHistory', { title: reviewOf.title, date: formatDate(reviewOf.created_at, { day: 'numeric', month: 'long' }) })}</Muted>}
+          {old && <Muted>{t('fromHistory', { title: old.round.title, date: formatDate(old.round.created_at, { day: 'numeric', month: 'long' }) })}</Muted>}
         </View>
 
         <View style={[styles.top, wide && styles.topWide]}>
@@ -201,7 +235,7 @@ export default function Result() {
           {history ? (
             <Button title={t('backToProgress')} onPress={leave} />
           ) : (
-            <Button title={mode === 'own' && ownPitch ? t('pitchAgain') : t('another')} onPress={again} />
+            <Button title={live.mode === 'own' && live.ownPitch ? t('pitchAgain') : t('another')} onPress={again} />
           )}
           <Button title={history ? tc('home') : t('yourProgress')} variant="secondary" onPress={() => (history ? goMenu() : goTab('/profile'))} />
         </View>

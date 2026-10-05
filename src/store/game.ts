@@ -1,8 +1,8 @@
 import { create } from 'zustand';
 
-import { mediaUrl, onUnauthorized, setAuthToken } from '@/api/client';
+import { onUnauthorized, setAuthToken } from '@/api/client';
 import type { Slide } from '@/slides/render';
-import type { BetterVersion, Case, Delivery, Difficulty, Finish, Flow, HistoryRound, Pace, PitchLimits, JuryAnswer, JuryQuestion, Mode, OwnPitchInput, Round, RoundReview, User } from '@/api/types';
+import type { BetterVersion, Case, Delivery, Difficulty, Finish, Flow, Pace, PitchLimits, JuryAnswer, JuryQuestion, Mode, OwnPitchInput, Round, User } from '@/api/types';
 
 // вход помнится между запусками: на сайте — localStorage, в приложении — файл в папке документов (session.ts)
 import { loadSession, saveSession } from './session';
@@ -13,8 +13,6 @@ setAuthToken(saved?.token ?? null);
 type GameState = {
   user: User | null;
   token: string | null;
-  /** Открыт разбор старого раунда из истории (записи у него нет); null — только что сыгранный раунд. */
-  reviewOf: HistoryRound | null;
   /** Какой камерой снимать выступление: фронтальной или задней. */
   camera: 'user' | 'environment';
   setCamera: (camera: 'user' | 'environment') => void;
@@ -35,11 +33,12 @@ type GameState = {
   setPitchLimits: (limits: PitchLimits | null) => void;
   signIn: (user: User, token: string) => void;
   signOut: () => void;
-  openReview: (review: RoundReview) => void;
   mode: Mode;
   topic: Case | null;
   ownPitch: OwnPitchInput | null;
   round: Round | null;
+  /** Уровень, с которым создан текущий раунд: жюри спрашивает и оценивает по нему, даже если на «Главной» выбрали другой. */
+  roundDifficulty: Difficulty | null;
   notes: string;
   delivery: Delivery | null;
   juryAnswers: JuryAnswer[];
@@ -59,7 +58,7 @@ type GameState = {
   setPitchAudio: (uri: string | null) => void;
   startTopic: (mode: Mode, topic: Case) => void;
   startOwnPitch: (own: OwnPitchInput) => void;
-  setRound: (round: Round) => void;
+  setRound: (round: Round, difficulty: Difficulty) => void;
   setNotes: (notes: string) => void;
   setDelivery: (delivery: Delivery) => void;
   addJuryAnswer: (answer: JuryAnswer) => void;
@@ -71,7 +70,6 @@ type GameState = {
 export const useGame = create<GameState>((set) => ({
   user: saved?.user ?? null,
   token: saved?.token ?? null,
-  reviewOf: null,
   camera: 'user',
   pace: 'normal',
   difficulty: 'easy',
@@ -88,6 +86,7 @@ export const useGame = create<GameState>((set) => ({
   topic: null,
   ownPitch: null,
   round: null,
+  roundDifficulty: null,
   notes: '',
   delivery: null,
   juryAnswers: [],
@@ -121,7 +120,6 @@ export const useGame = create<GameState>((set) => ({
       round: null,
       delivery: null,
       result: null,
-      reviewOf: null,
       juryAnswers: [],
       juryQuestions: [],
       flow: null,
@@ -130,27 +128,11 @@ export const useGame = create<GameState>((set) => ({
       pitchVideoUri: null,
     });
   },
-  openReview: (review) =>
-    set({
-      reviewOf: review.round,
-      mode: review.round.mode as Mode,
-      topic: { id: review.round.id, title: review.round.title, brief: '', audience: '' },
-      round: null,
-      delivery: review.delivery,
-      juryQuestions: review.jury_questions,
-      juryAnswers: review.jury_answers,
-      result: review.result,
-      flow: review.flow ?? null,
-      betterVersion: review.better_version ?? null,
-      // звук хранится на сервере — старое выступление можно переслушать; видео остаётся только у только что сыгранного
-      pitchAudioUri: review.audio_url ? mediaUrl(review.audio_url) : null,
-      pitchVideoUri: null,
-    }),
   setJuryQuestions: (juryQuestions) => set({ juryQuestions }),
   setPitchAudio: (pitchAudioUri) => set({ pitchAudioUri }),
   setPitchVideo: (pitchVideoUri, pitchVideoOffset) => set({ pitchVideoUri, pitchVideoOffset }),
   startTopic: (mode, topic) =>
-    set({ mode, topic, ownPitch: null, round: null, notes: '', delivery: null, juryAnswers: [], juryQuestions: [], flow: null, betterVersion: null, pitchAudioUri: null, pitchVideoUri: null, result: null, reviewOf: null, slides: [] }),
+    set({ mode, topic, ownPitch: null, round: null, notes: '', delivery: null, juryAnswers: [], juryQuestions: [], flow: null, betterVersion: null, pitchAudioUri: null, pitchVideoUri: null, result: null, slides: [] }),
   startOwnPitch: (own) =>
     set({
       mode: 'own',
@@ -171,9 +153,8 @@ export const useGame = create<GameState>((set) => ({
       pitchAudioUri: null,
       pitchVideoUri: null,
       result: null,
-      reviewOf: null,
     }),
-  setRound: (round) => set({ round }),
+  setRound: (round, roundDifficulty) => set({ round, roundDifficulty }),
   setNotes: (notes) => set({ notes }),
   setDelivery: (delivery) => set({ delivery }),
   addJuryAnswer: (answer) => set((s) => ({ juryAnswers: [...s.juryAnswers, answer] })),
@@ -201,7 +182,7 @@ export function pitchLimitsFor(round: Round | null, custom: PitchLimits | null):
  */
 export function useUnfinishedRound(): { title: string; answered: number } | null {
   // селекторы отдают примитивы: новый объект на каждый вызов zustand 5 счёл бы изменением и зациклил перерисовку
-  const title = useGame((s) => (s.round && s.delivery && !s.result && !s.reviewOf && s.topic ? s.topic.title : null));
+  const title = useGame((s) => (s.round && s.delivery && !s.result && s.topic ? s.topic.title : null));
   const answered = useGame((s) => s.juryAnswers.length);
   return title === null ? null : { title, answered };
 }

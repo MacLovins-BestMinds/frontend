@@ -61,7 +61,7 @@ export default function Prep() {
     api
       .createRound(user.user_id, mode, mode === 'own' ? undefined : topic.id, ownData, difficulty)
       // ответ пришёл, когда игрок уже взял другую тему (быстро вернулся и выбрал снова) — этот раунд не наш
-      .then((created) => useGame.getState().topic === topic && setRound(created))
+      .then((created) => useGame.getState().topic === topic && setRound(created, difficulty))
       .catch((e: Error) => useGame.getState().topic === topic && setError(t('errRound', { message: e.message })));
     // уровень выбран до подготовки и на ней не меняется
     // eslint-disable-next-line react-hooks/exhaustive-deps

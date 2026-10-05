@@ -4,7 +4,7 @@ import { AppState, Linking, Platform, Pressable, StyleSheet, Text, View } from '
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { api } from '@/api/client';
-import type { Difficulty } from '@/api/types';
+import type { Delivery, Difficulty } from '@/api/types';
 import { startLive, type LiveEvent } from '@/audio/live';
 import { prepareMic } from '@/audio/micAccess';
 import { useRecorder } from '@/audio/useRecorder';
@@ -114,6 +114,9 @@ export default function Stage() {
   // игрок ушёл со сцены («Покинуть раунд», назад): разбор, который придёт позже, выбрасываем — он никуда не уводит
   // и не всплывает на «Главной» как незаконченный раунд (docs/ux.md)
   const gone = useRef(false);
+  // открыт вопрос «Покинуть раунд?»: разбор, пришедший в это время, ждёт ответа игрока (parked), а не уводит на жюри
+  const leaving = useRef(false);
+  const parked = useRef<Delivery | null>(null);
   useEffect(
     () => () => {
       gone.current = true;
@@ -324,13 +327,18 @@ export default function Stage() {
       setStep(1);
       const delivery = await api.delivery(round.round_id, audioUri.current, shot.current?.gaze ?? [], notes, pace, pitchLimits ? limits : null);
       if (gone.current) return;
+      if (leaving.current) {
+        parked.current = delivery;
+        return;
+      }
       setDelivery(delivery);
       router.replace('/jury');
     } catch (e) {
       if (gone.current) return;
       // запись уже сохранена: «Попробовать ещё раз» отправит её же, а не начнёт питч заново
       const message = (e as Error).message;
-      setUnreadable(message.startsWith('422'));
+      // запись не читается (422) или её нет вовсе (микрофон не включился): отправлять снова бесполезно — «Записать заново»
+      setUnreadable(message.startsWith('422') || !audioUri.current);
       setError(t('errReview', { message }));
       finished.current = false;
     }
@@ -345,8 +353,22 @@ export default function Stage() {
   };
   /** После «Закончить» (идёт разбор или он не удался) — уйти на «Главную» без разбора, тоже с вопросом. */
   const leaveRound = async () => {
+    if (leaving.current) return;
+    leaving.current = true;
     const ok = await confirm({ title: t('leaveTitle'), message: t('leaveText'), ok: t('leaveRound'), cancel: tc('cancel'), destructive: true });
-    if (ok) goMenu();
+    leaving.current = false;
+    const ready = parked.current;
+    parked.current = null;
+    if (ok) {
+      // ушли — ответ сервера, который ещё придёт, выбрасываем сразу, не дожидаясь, пока экран закроется
+      gone.current = true;
+      return goMenu();
+    }
+    // передумали, а разбор тем временем пришёл — идём к жюри, как обычно
+    if (ready && !gone.current) {
+      setDelivery(ready);
+      router.replace('/jury');
+    }
   };
   // сайт: во время выступления и разбора обновление вкладки спрашивает подтверждение
   useLeaveGuard(started);

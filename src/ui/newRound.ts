@@ -9,7 +9,7 @@ import { confirm } from './confirm';
  */
 export async function okToStartNewRound(): Promise<boolean> {
   const s = useGame.getState();
-  if (!(s.round && s.delivery && !s.result && !s.reviewOf)) return true;
+  if (!(s.round && s.delivery && !s.result)) return true;
   return confirm({
     title: translate('menu', 'replaceTitle'),
     message: translate('menu', 'replaceText'),
