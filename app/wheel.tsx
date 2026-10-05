@@ -104,7 +104,7 @@ export default function WheelScreen() {
           <Button title={t('again')} variant="secondary" disabled={spinning} onPress={() => run()} style={!wide ? styles.full : undefined} />
         </View>
       }>
-      <AppHeader glass back={() => goBack()} />
+      <AppHeader back={() => goBack()} />
       <Container style={[styles.main, wide && styles.mainWide]}>
         <View style={[styles.wheelBox, wide && styles.wheelBoxWide]}>
           <Svg width={34} height={38} viewBox="0 0 28 32" style={styles.pointer}>

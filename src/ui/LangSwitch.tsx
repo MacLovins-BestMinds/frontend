@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, View, type PressableStateCallbackType } from 'react-native';
+import { ActionSheetIOS, Alert, Modal, Platform, Pressable, StyleSheet, Text, View, type PressableStateCallbackType } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 
 import { c, font } from '@/design/theme';
@@ -18,7 +18,8 @@ function Check() {
 
 /**
  * Переключатель языка в шапке: стеклянная кнопка с кодом языка (на широком экране — ещё и глобус).
- * Нажатие открывает меню под кнопкой: самоназвания языков и галочка у текущего. Закрывается выбором или нажатием мимо.
+ * В приложении нажатие открывает системный выбор — лист действий на iOS и диалог на Android: самоназвания
+ * языков, галочка у текущего. В браузере — меню под кнопкой, закрывается выбором или нажатием мимо.
  */
 export function LangSwitch() {
   const t = useT('common');
@@ -26,12 +27,36 @@ export function LangSwitch() {
   const setLang = useLangStore((s) => s.setLang);
   const { wide, width } = useLayout();
   const anchor = useRef<View>(null);
+  // меню браузера стоит под кнопкой, прижато к её правому краю: координаты окна, Modal рисуется поверх всего экрана
   const [open, setOpen] = useState(false);
-  // меню стоит под кнопкой, прижато к её правому краю: координаты окна, Modal рисуется поверх всего экрана
   const [at, setAt] = useState({ top: 0, right: 0 });
   const current = LANGS.find((l) => l.id === lang) ?? LANGS[0];
+  const labels = LANGS.map((l) => (l.id === lang ? `✓ ${l.name}` : l.name));
+
+  const pick = (id: Lang) => {
+    setOpen(false);
+    if (id !== lang) setLang(id);
+  };
 
   const show = () => {
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        { title: t('language'), options: [...labels, t('cancel')], cancelButtonIndex: labels.length },
+        (index) => {
+          if (index < LANGS.length) pick(LANGS[index].id);
+        },
+      );
+      return;
+    }
+    if (Platform.OS !== 'web') {
+      Alert.alert(
+        t('language'),
+        undefined,
+        LANGS.map((l, i) => ({ text: labels[i], onPress: () => pick(l.id) })),
+        { cancelable: true },
+      );
+      return;
+    }
     const node = anchor.current;
     if (!node) return;
     node.measureInWindow((x, y, w, h) => {
@@ -39,45 +64,43 @@ export function LangSwitch() {
       setOpen(true);
     });
   };
-  const pick = (id: Lang) => {
-    setOpen(false);
-    if (id !== lang) setLang(id);
-  };
 
   return (
     <>
       <View ref={anchor} collapsable={false}>
         <GlassButton icon={wide ? 'globe' : undefined} title={current.code} label={t('languageNow', { name: current.name })} onPress={show} />
       </View>
-      <Modal visible={open} transparent animationType="fade" statusBarTranslucent navigationBarTranslucent onRequestClose={() => setOpen(false)}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={() => setOpen(false)} accessibilityLabel={t('close')} />
-        <GlassSurface round={18} style={[styles.menu, at]}>
-          <View accessibilityRole="menu" accessibilityLabel={t('language')} style={styles.list}>
-            {LANGS.map((l) => {
-              const on = l.id === lang;
-              return (
-                <Pressable
-                  key={l.id}
-                  accessibilityRole="menuitem"
-                  accessibilityState={{ checked: on }}
-                  accessibilityLabel={l.name}
-                  onPress={() => pick(l.id)}
-                  style={(state) => {
-                    // в вебе Pressable сообщает и наведение мыши
-                    const { pressed, hovered } = state as PressableStateCallbackType & { hovered?: boolean };
-                    return [styles.item, (pressed || hovered) && styles.itemHover];
-                  }}>
-                  <Text style={styles.code}>{l.code}</Text>
-                  <Text style={[styles.name, on && styles.nameOn]} numberOfLines={1}>
-                    {l.name}
-                  </Text>
-                  <View style={styles.check}>{on ? <Check /> : null}</View>
-                </Pressable>
-              );
-            })}
-          </View>
-        </GlassSurface>
-      </Modal>
+      {Platform.OS === 'web' ? (
+        <Modal visible={open} transparent animationType="fade" statusBarTranslucent navigationBarTranslucent onRequestClose={() => setOpen(false)}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setOpen(false)} accessibilityLabel={t('close')} />
+          <GlassSurface round={18} style={[styles.menu, at]}>
+            <View accessibilityRole="menu" accessibilityLabel={t('language')} style={styles.list}>
+              {LANGS.map((l) => {
+                const on = l.id === lang;
+                return (
+                  <Pressable
+                    key={l.id}
+                    accessibilityRole="menuitem"
+                    accessibilityState={{ checked: on }}
+                    accessibilityLabel={l.name}
+                    onPress={() => pick(l.id)}
+                    style={(state) => {
+                      // в вебе Pressable сообщает и наведение мыши
+                      const { pressed, hovered } = state as PressableStateCallbackType & { hovered?: boolean };
+                      return [styles.item, (pressed || hovered) && styles.itemHover];
+                    }}>
+                    <Text style={styles.code}>{l.code}</Text>
+                    <Text style={[styles.name, on && styles.nameOn]} numberOfLines={1}>
+                      {l.name}
+                    </Text>
+                    <View style={styles.check}>{on ? <Check /> : null}</View>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </GlassSurface>
+        </Modal>
+      ) : null}
     </>
   );
 }

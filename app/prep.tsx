@@ -11,8 +11,7 @@ import { translate, useT } from '@/i18n';
 import { alarmPermission, enableAlarm, isAway, onReturn, ring, unlockSound, type AlarmPermission } from '@/notify/alarm';
 import { pitchLimitsFor, useGame } from '@/store/game';
 import { AppHeader } from '@/ui/AppHeader';
-import { GlassButton } from '@/ui/Glass';
-import { goBack, goMenu } from '@/ui/nav';
+import { goBack } from '@/ui/nav';
 import { Brief } from '@/ui/Brief';
 import { TicketButton } from '@/ui/decor';
 import { levelName } from '@/ui/LevelPicker';
@@ -38,7 +37,6 @@ const PREP_MAX_SEC = 30 * 60;
 export default function Prep() {
   useStayAwake();
   const t = useT('prep');
-  const tc = useT('common');
   const { wide } = useLayout();
   const { user, mode, topic, ownPitch, round, notes, pace, difficulty, pitchLimits, setRound, setNotes, setPace, setPitchLimits } = useGame();
   const [endsAt, setEndsAt] = useState<number | null>(null);
@@ -157,9 +155,7 @@ export default function Prep() {
           <TicketButton title={t('ready')} stubTop={t('stubPitch')} stubBottom={formatRange(limits.min, limits.max)} onPress={() => router.replace('/stage')} stretch={!wide} />
         ) : null
       }>
-      <AppHeader glass back={() => goBack()}>
-        <GlassButton icon="home" label={tc('menu')} onPress={goMenu} />
-      </AppHeader>
+      <AppHeader back={() => goBack()} />
       <Container style={[styles.main, wide && styles.mainWide]}>
         <View style={[styles.left, wide && styles.leftWide]}>
           <View style={styles.head}>

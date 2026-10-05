@@ -10,7 +10,7 @@ import { useLayout } from '@/hooks/useLayout';
 import { useT } from '@/i18n';
 import { rankLabel } from '@/i18n/ranks';
 import { useGame } from '@/store/game';
-import { AppHeader, NickChip } from '@/ui/AppHeader';
+import { AppHeader } from '@/ui/AppHeader';
 import { DashedLine, Tape, TrendArrow, Wheel } from '@/ui/decor';
 import { LevelPicker } from '@/ui/LevelPicker';
 import { Button, Card, Chip, Container, ErrorText, H1, H3, Label, Muted, P, Page, Small } from '@/ui/primitives';
@@ -142,15 +142,9 @@ export default function Menu() {
   );
 
   return (
-    <Page>
-      {/* на телефоне в шапке только логотип и язык: ник и звание — в приветствии ниже, профиль — в доке */}
-      <AppHeader nav="menu">
-        {wide ? (
-          <Pressable accessibilityRole="link" accessibilityLabel={t('profileLink')} onPress={() => router.push('/profile')}>
-            <NickChip nick={user.nick} />
-          </Pressable>
-        ) : null}
-      </AppHeader>
+    <Page sticky>
+      {/* ник и звание — в приветствии ниже; профиль — вкладка (док внизу, панель в приложении, ссылка в шапке на компьютере) */}
+      <AppHeader nav="menu" />
       <Container style={[styles.main, !wide && styles.mainNarrow]}>
         <View style={styles.hello}>
           <View style={styles.grow}>
