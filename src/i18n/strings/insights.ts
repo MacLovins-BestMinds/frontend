@@ -1,6 +1,6 @@
 import { strings } from '../define';
 
-// ИИ-разбор поверх записи: ход мысли, нарезка ошибок и питч без запинок (src/ui/ThoughtFlow, BlooperReel, BetterVersion).
+// ИИ-разбор поверх записи: ход мысли и питч без запинок (src/ui/ThoughtFlow, BetterVersion).
 export default strings(
   {
     flowTitle: 'Thought flow',
@@ -18,17 +18,6 @@ export default strings(
     'kind.strong_close': 'Strong ending',
     'kind.weak_close': 'Weak ending',
     quote: '“{text}”',
-
-    reelTitle: 'Blooper reel',
-    reelNote: {
-      one: 'Only the slip: {n} moment, a few seconds long.',
-      other: 'Only the slips: {n} moments back to back, a few seconds each.',
-    },
-    reelPosition: 'Slip {i} of {n}',
-    reelPrev: 'Previous slip',
-    reelNext: 'Next slip',
-    reelStop: 'Stop',
-    reelStopLabel: 'Stop the blooper reel',
 
     betterTitle: 'Your pitch, polished',
     betterPending: 'Recording it in your voice…',
@@ -58,19 +47,6 @@ export default strings(
       'kind.weak_close': 'Слабый финал',
       quote: '«{text}»',
 
-      reelTitle: 'Нарезка факапов',
-      reelNote: {
-        one: 'Только ошибки: {n} момент на пару секунд.',
-        few: 'Только ошибки: {n} момента подряд, по паре секунд.',
-        many: 'Только ошибки: {n} моментов подряд, по паре секунд.',
-        other: 'Только ошибки: {n} момента подряд, по паре секунд.',
-      },
-      reelPosition: 'Ошибка {i} из {n}',
-      reelPrev: 'Предыдущая ошибка',
-      reelNext: 'Следующая ошибка',
-      reelStop: 'Стоп',
-      reelStopLabel: 'Остановить нарезку факапов',
-
       betterTitle: 'Твой питч без запинок',
       betterPending: 'Записываем его твоим голосом…',
       betterPendingNote: 'Тот же питч, только без паразитов и запинок. Это займёт около минуты — пока читай разбор.',
@@ -97,18 +73,6 @@ export default strings(
       'kind.strong_close': 'Final puternic',
       'kind.weak_close': 'Final slab',
       quote: '„{text}”',
-
-      reelTitle: 'Colaj de gafe',
-      reelNote: {
-        one: 'Doar gafa: {n} moment de câteva secunde.',
-        few: 'Doar gafele: {n} momente la rând, câteva secunde fiecare.',
-        other: 'Doar gafele: {n} de momente la rând, câteva secunde fiecare.',
-      },
-      reelPosition: 'Gafa {i} din {n}',
-      reelPrev: 'Gafa anterioară',
-      reelNext: 'Gafa următoare',
-      reelStop: 'Stop',
-      reelStopLabel: 'Oprește colajul de gafe',
 
       betterTitle: 'Pitch-ul tău, fără ezitări',
       betterPending: 'Îl înregistrăm cu vocea ta…',

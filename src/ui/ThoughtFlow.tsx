@@ -10,10 +10,10 @@ import type { PlayerMark } from './PitchPlayer';
 import { Card, H3, Muted, P, Small } from './primitives';
 
 /** Цвет момента: удачи зелёные, провалы красно-оранжевые — так же, как удачная пауза и ошибки речи. */
-export const toneColor = (tone: FlowMoment['tone']) => (tone === 'good' ? c.markGood : c.markBad);
+const toneColor = (tone: FlowMoment['tone']) => (tone === 'good' ? c.markGood : c.markBad);
 
 /** Название момента на текущем языке: «Hook», «Зацепка»; незнакомый вид — как пришёл. */
-export function momentName(kind: FlowMoment['kind']): string {
+function momentName(kind: FlowMoment['kind']): string {
   return translate('insights', `kind.${kind}`) || kind;
 }
 
