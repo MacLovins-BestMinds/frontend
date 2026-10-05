@@ -10,7 +10,6 @@ import { rankLabel } from '@/i18n/ranks';
 import { useGame } from '@/store/game';
 import { AppHeader } from '@/ui/AppHeader';
 import { BetterVersion } from '@/ui/BetterVersion';
-import { GlassButton } from '@/ui/Glass';
 import { Highlights } from '@/ui/Highlights';
 import { goMenu, goTab } from '@/ui/nav';
 import { DashedLine, Paddle, Stamp } from '@/ui/decor';
@@ -54,9 +53,7 @@ export default function Result() {
 
   return (
     <Page sticky>
-      <AppHeader glass>
-        <GlassButton icon="home" title={tc('menu')} onPress={goMenu} />
-      </AppHeader>
+      <AppHeader />
       <Container style={styles.main}>
         <View style={styles.head}>
           <H1 style={!wide && styles.titleNarrow}>{wide ? t('title') : t('titleShort')}</H1>

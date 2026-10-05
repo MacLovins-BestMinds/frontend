@@ -168,7 +168,7 @@ export default function Profile() {
   return (
     <Page sticky>
       {/* профиль — вкладка: «назад» ей не нужен, а выход лежит внизу страницы, подальше от случайного нажатия */}
-      <AppHeader glass nav="profile" />
+      <AppHeader nav="profile" />
       <Container style={[styles.main, !wide && styles.mainNarrow]}>
         <View style={[styles.row, !wide && styles.column]}>
           <View style={[styles.hero, wide && styles.heroWide]}>

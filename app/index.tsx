@@ -11,6 +11,7 @@ import { useT } from '@/i18n';
 import { ART, CHARACTERS } from '@/scene/assets';
 import { useGame } from '@/store/game';
 import { AppHeader } from '@/ui/AppHeader';
+import { GlassButton } from '@/ui/Glass';
 import { Backdrop } from '@/ui/Backdrop';
 import { Bubble, Flower, Rays, Spark, Squiggle, Stamp, TicketButton, Valance } from '@/ui/decor';
 import { Button, Card, Container, ErrorText, Field, H2, H3, Label, Muted, P, Small, Tag } from '@/ui/primitives';
@@ -173,10 +174,12 @@ export default function Landing() {
       {/* фон до краёв экрана, отступы безопасной зоны — внутри прокрутки */}
       <ScrollView
         ref={scroll}
-        contentContainerStyle={[styles.grow, { paddingTop: insets.top, paddingBottom: insets.bottom, paddingLeft: insets.left, paddingRight: insets.right }]}
-        scrollIndicatorInsets={{ top: insets.top, bottom: insets.bottom }}>
-        <AppHeader home="/">
-          <Button title={t('signIn')} variant="secondary" size="sm" onPress={start} style={wide ? shadow(3) : undefined} />
+        contentContainerStyle={[styles.grow, { paddingBottom: insets.bottom, paddingLeft: insets.left, paddingRight: insets.right }]}
+        scrollIndicatorInsets={{ bottom: insets.bottom }}
+        stickyHeaderIndices={[0]}>
+        {/* та же стеклянная шапка, что и на остальных экранах; единственная кнопка — «Войти» */}
+        <AppHeader>
+          <GlassButton title={t('signIn')} active onPress={start} />
         </AppHeader>
 
         {/* Первый экран */}

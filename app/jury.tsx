@@ -253,7 +253,7 @@ export default function Jury() {
 
   return (
     <Page sticky>
-      <AppHeader glass />
+      <AppHeader />
       <Container style={styles.main}>
         <View style={styles.head}>
           <H1 style={!wide && styles.titleNarrow}>{t('title')}</H1>

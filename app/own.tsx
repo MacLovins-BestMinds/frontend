@@ -122,7 +122,7 @@ export default function OwnPitch() {
 
   return (
     <Page sticky footer={<TicketButton title={t('next')} stubTop={tc('minutes', { n: 5 })} stubBottom="→" onPress={start} stretch={!wide} />}>
-      <AppHeader glass back={() => goBack()} />
+      <AppHeader back={() => goBack()} />
       <Container style={[styles.main, wide && styles.mainWide]}>
         <View style={[styles.col, wide && styles.colWide]}>
           <H1 style={!wide && styles.titleNarrow}>{t('title')}</H1>
