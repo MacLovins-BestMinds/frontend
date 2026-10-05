@@ -24,17 +24,19 @@ export function GlassSurface({ children, style, round = 999 }: { children?: Reac
   return <View style={[{ borderRadius: round }, web ? [frosted('rgba(255,250,238,0.62)'), styles.webEdge] : styles.solid, style]}>{children}</View>;
 }
 
-export type GlassIcon = 'back' | 'home' | 'close' | 'globe';
+export type GlassIcon = 'back' | 'home' | 'close' | 'globe' | 'profile';
 
-function Icon({ name, color = c.ink }: { name: GlassIcon; color?: string }) {
+/** Значки навигации одной линией — для стеклянных кнопок и дока. */
+export function Icon({ name, color = c.ink, size = 20 }: { name: GlassIcon; color?: string; size?: number }) {
   const d = {
     back: 'M15 5l-7 7 7 7',
     home: 'M4 11l8-7 8 7M6 10v9h4v-5h4v5h4v-9',
     close: 'M6 6l12 12M18 6L6 18',
     globe: 'M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18M3 12h18M12 3c2.5 2.6 3.6 5.6 3.6 9s-1.1 6.4-3.6 9c-2.5-2.6-3.6-5.6-3.6-9s1.1-6.4 3.6-9',
+    profile: 'M12 12a4 4 0 1 0 0-8a4 4 0 1 0 0 8M4.5 20.5c0-3.6 3.4-5.5 7.5-5.5s7.5 1.9 7.5 5.5',
   }[name];
   return (
-    <Svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round">
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round">
       <Path d={d} />
     </Svg>
   );
@@ -44,22 +46,39 @@ function Icon({ name, color = c.ink }: { name: GlassIcon; color?: string }) {
  * Кнопка-пилюля на стекле: «назад», «в меню» и т. п. Нажатие слегка сжимает её, в вебе при наведении
  * стекло становится плотнее. Без title — круглая кнопка с одним значком.
  */
-export function GlassButton({ title, icon, onPress, label }: { title?: string; icon?: GlassIcon; onPress: () => void; label?: string }) {
+export function GlassButton({
+  title,
+  icon,
+  onPress,
+  label,
+  active = false,
+}: {
+  title?: string;
+  icon?: GlassIcon;
+  onPress: () => void;
+  label?: string;
+  /** Текущий раздел (ссылки шапки): тушь с оранжевой подписью, как выбранная вкладка дока. */
+  active?: boolean;
+}) {
+  const ink = active ? c.orange : c.ink;
   const content = (
     <View style={[styles.row, !title && styles.iconOnly]}>
-      {icon ? <Icon name={icon} /> : null}
-      {title ? <Text style={styles.title}>{title}</Text> : null}
+      {icon ? <Icon name={icon} color={ink} /> : null}
+      {title ? <Text style={[styles.title, { color: ink }]}>{title}</Text> : null}
     </View>
   );
   return (
     <Pressable
-      accessibilityRole="button"
+      accessibilityRole={active ? 'tab' : 'button'}
+      accessibilityState={active ? { selected: true } : undefined}
       accessibilityLabel={label ?? title}
       onPress={onPress}
       hitSlop={6}
       style={({ pressed }) => [styles.press, pressed && styles.pressed]}>
       {({ hovered }: { pressed: boolean; hovered?: boolean }) =>
-        liquid ? (
+        active ? (
+          <View style={[styles.pill, styles.active]}>{content}</View>
+        ) : liquid ? (
           <GlassView glassEffectStyle="regular" isInteractive tintColor="rgba(255,248,231,0.3)" style={styles.pill}>
             {content}
           </GlassView>
@@ -79,5 +98,6 @@ const styles = StyleSheet.create({
   iconOnly: { width: 44, paddingLeft: 0, paddingRight: 0, justifyContent: 'center' },
   title: { fontFamily: font.bold, fontSize: 15, color: c.ink },
   solid: { backgroundColor: c.paper, ...outline },
+  active: { backgroundColor: c.ink, borderWidth: 2.5, borderColor: c.ink },
   webEdge: { borderWidth: 1.5, borderColor: 'rgba(42,36,28,0.18)', boxShadow: '0 6px 20px rgba(42,36,28,0.10), inset 0 1px 0 rgba(255,255,255,0.7)' } as ViewStyle,
 });

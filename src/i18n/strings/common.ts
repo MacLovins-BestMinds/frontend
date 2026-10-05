@@ -5,6 +5,8 @@ export default strings(
   {
     back: 'Back',
     menu: 'Menu',
+    home: 'Home',
+    profile: 'Profile',
     close: 'Close',
     tryAgain: 'Try again',
     loading: 'Loading…',
@@ -66,6 +68,8 @@ export default strings(
     ru: {
       back: 'Назад',
       menu: 'Меню',
+      home: 'Главная',
+      profile: 'Профиль',
       close: 'Закрыть',
       tryAgain: 'Попробовать ещё раз',
       loading: 'Загрузка…',
@@ -126,6 +130,8 @@ export default strings(
     ro: {
       back: 'Înapoi',
       menu: 'Meniu',
+      home: 'Acasă',
+      profile: 'Profil',
       close: 'Închide',
       tryAgain: 'Încearcă din nou',
       loading: 'Se încarcă…',

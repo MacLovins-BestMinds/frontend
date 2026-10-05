@@ -143,8 +143,8 @@ export default function Menu() {
 
   return (
     <Page>
-      {/* на телефоне в шапке только логотип и язык: ник и звание — в приветствии ниже */}
-      <AppHeader>
+      {/* на телефоне в шапке только логотип и язык: ник и звание — в приветствии ниже, профиль — в доке */}
+      <AppHeader nav="menu">
         {wide ? (
           <Pressable accessibilityRole="link" accessibilityLabel={t('profileLink')} onPress={() => router.push('/profile')}>
             <NickChip nick={user.nick} />

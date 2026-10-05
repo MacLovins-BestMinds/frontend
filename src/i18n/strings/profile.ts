@@ -9,6 +9,7 @@ export default strings(
     errLoad: 'Could not load your progress: {message}',
     errOpen: 'Could not open the round: {message}',
     signOut: 'Sign out',
+    signedInAs: 'Signed in as {nick}',
     yourProgress: 'Your progress',
     nextRank: {
       one: '{n} more point on average to become {rank}. The rank follows the average of your last five rounds — now {score}.',
@@ -54,6 +55,7 @@ export default strings(
       errLoad: 'Прогресс не загрузился: {message}',
       errOpen: 'Раунд не открылся: {message}',
       signOut: 'Выйти',
+      signedInAs: 'Ты вошёл как {nick}',
       yourProgress: 'Твой прогресс',
       nextRank: {
         one: 'Ещё {n} балл в среднем — и звание «{rank}» твоё. Звание идёт за средним баллом пяти последних раундов — сейчас {score}.',
@@ -100,6 +102,7 @@ export default strings(
       errLoad: 'Progresul nu s-a încărcat: {message}',
       errOpen: 'Runda nu s-a deschis: {message}',
       signOut: 'Ieșire',
+      signedInAs: 'Ești conectat ca {nick}',
       yourProgress: 'Progresul tău',
       nextRank: {
         one: 'Încă {n} punct în medie și rangul „{rank}” e al tău. Rangul urmează media ultimelor cinci runde — acum {score}.',

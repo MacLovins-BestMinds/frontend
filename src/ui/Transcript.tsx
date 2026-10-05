@@ -14,15 +14,19 @@ import { Card, H3, Small } from './primitives';
 export const MARK: Record<TimelineEvent['type'], { color: string }> = {
   filler: { color: c.markFiller },
   repeat: { color: c.markRepeat },
+  stumble: { color: c.markStumble },
+  weak_phrase: { color: c.markWeak },
   profanity: { color: c.markSwear },
   long_pause: { color: c.markPause },
   hesitation: { color: c.markPause },
   pace: { color: c.markPace },
   gaze_off: { color: c.markGaze },
+  energy: { color: c.markEnergy },
   // удачная пауза — не ошибка: зелёная, как сильные моменты хода мысли
   good_pause: { color: c.markGood },
 };
-const LEGEND = ['filler', 'repeat', 'long_pause', 'pace'] as const;
+// легенда — только то, что есть в этом разборе, в этом порядке; заминка делит цвет с паузой и отдельно не показывается
+const LEGEND_ORDER = ['filler', 'repeat', 'stumble', 'weak_phrase', 'profanity', 'long_pause', 'pace', 'gaze_off', 'energy', 'good_pause'] as const;
 
 /** Название отметки на текущем языке: «filler word», «слово-паразит». */
 export function markName(type: TimelineEvent['type']): string {
@@ -240,7 +244,7 @@ export const Transcript = forwardRef<TranscriptHandle, Props>(function Transcrip
   };
 
   const has = (type: TimelineEvent['type']) => events.some((e) => e.type === type);
-  const legend = [...LEGEND, ...(has('profanity') ? (['profanity'] as const) : []), ...(has('gaze_off') ? (['gaze_off'] as const) : []), ...(has('good_pause') ? (['good_pause'] as const) : [])];
+  const legend = LEGEND_ORDER.filter(has);
 
   return (
     <Card flat style={[styles.card, wide && styles.cardWide]}>

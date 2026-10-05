@@ -1,35 +1,11 @@
 import { create } from 'zustand';
 
-import { Platform } from 'react-native';
-
 import { mediaUrl, onUnauthorized, setAuthToken } from '@/api/client';
 import type { Slide } from '@/slides/render';
 import type { BetterVersion, Case, Delivery, Difficulty, Finish, Flow, HistoryRound, Pace, PitchLimits, JuryAnswer, JuryQuestion, Mode, OwnPitchInput, Round, RoundReview, User } from '@/api/types';
 
-const SESSION_KEY = 'stage-zero-session';
-
-type Saved = { user: User; token: string };
-
-// На сайте помним вход между перезагрузками; в приложении пока нет — нужно отдельное хранилище.
-function loadSession(): Saved | null {
-  if (Platform.OS !== 'web' || typeof localStorage === 'undefined') return null;
-  try {
-    const saved = JSON.parse(localStorage.getItem(SESSION_KEY) ?? 'null') as Saved | null;
-    return saved?.user && saved.token ? saved : null;
-  } catch {
-    return null;
-  }
-}
-
-function saveSession(saved: Saved | null) {
-  if (Platform.OS !== 'web' || typeof localStorage === 'undefined') return;
-  try {
-    if (saved) localStorage.setItem(SESSION_KEY, JSON.stringify(saved));
-    else localStorage.removeItem(SESSION_KEY);
-  } catch {
-    // хранилище недоступно — просто не запоминаем
-  }
-}
+// вход помнится между запусками: на сайте — localStorage, в приложении — файл в папке документов (session.ts)
+import { loadSession, saveSession } from './session';
 
 const saved = loadSession();
 setAuthToken(saved?.token ?? null);

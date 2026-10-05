@@ -160,6 +160,7 @@ export const mocks = {
       fillers_per_min: 1.8 + i * 0.5,
       long_pauses: i % 3,
       repeats: 1 + (i % 4),
+      weak_phrases: (i * 2) % 5,
       gaze_on_ratio: null,
     }));
     return {
@@ -182,6 +183,7 @@ export const mocks = {
         { key: 'wpm', title: 'Pace', value: 162, delta: 9, better: 'range', unit: 'words/min' },
         { key: 'long_pauses', title: 'Long pauses', value: 1, delta: 0, better: 'lower', unit: 'per pitch' },
         { key: 'repeats', title: 'Repeats', value: 2.4, delta: -0.6, better: 'lower', unit: 'per pitch' },
+        { key: 'weak_phrases', title: 'Hedging and apologies', value: 1.8, delta: -1.2, better: 'lower', unit: 'per pitch' },
       ],
       insights: [
         { kind: 'good', title: 'Your strong side: content', text: '73 on average over your last rounds.' },
@@ -251,8 +253,8 @@ export const mocks = {
       "Imagine it's eight in the morning and your grandmother can't remember if she took her blood pressure pill. " +
       'Um, this happens every day to millions of older people. ' +
       "We built a smart pill box: it beeps, lights up and notifies the family if the box isn't opened on time. " +
-      'A pilot in three pharmacies, in three pharmacies, two hundred families in a month. ' +
-      "We're looking for pharmacy chains as partners — let's talk after the pitch.",
+      'A pilot in three pha- pharmacies, in three pharmacies, two hundred families in a month. ' +
+      "I think we're looking for pharmacy chains as partners — let's talk after the pitch. So yeah.",
     scores: {
       content: {
         total: 72,
@@ -273,13 +275,22 @@ export const mocks = {
       fillers_per_min: 1.9,
       long_pauses: 1,
       gaze_on_ratio: 0.64,
+      stumbles: 1,
+      weak_phrases: 2,
+      pitch_variation: 2.6,
+      monotone: false,
+      fades: 1,
     },
     events: [
       { type: 'filler', t: 8.2, text: '«um»', start: 107, end: 109 },
       { type: 'gaze_off', t: 31.0, text: 'Looking away for 4 s', start: 166, end: 166 },
       { type: 'long_pause', t: 52.4, text: 'Pause of 3.6 s mid-phrase', start: 233, end: 233 },
-      { type: 'repeat', t: 66.0, text: 'Repeated: «in three pharmacies»', start: 296, end: 315 },
-      { type: 'pace', t: 78.0, text: 'Pace 196 words/min — too fast', start: 350, end: 350 },
+      { type: 'energy', t: 56.0, text: 'The voice fades at the end of the phrase (−11 dB)', start: 261, end: 266 },
+      { type: 'stumble', t: 61.0, text: 'Stumble: «pha- pharmacies»', start: 284, end: 299 },
+      { type: 'repeat', t: 66.0, text: 'Repeated: «in three pharmacies»', start: 301, end: 320 },
+      { type: 'pace', t: 78.0, text: 'Pace 196 words/min — too fast', start: 355, end: 355 },
+      { type: 'weak_phrase', t: 80.0, text: 'Hedging: «i think»', start: 355, end: 362 },
+      { type: 'weak_phrase', t: 92.0, text: 'Weak ending: «so yeah»', start: 439, end: 446 },
     ],
     tips: [
       'Open with a number: how many doses older people miss.',

@@ -32,9 +32,10 @@ export default function RootLayout() {
           gestureEnabled: true,
           fullScreenGestureEnabled: true,
         }}>
+        {/* лендинг — только для тех, кто ещё не вошёл: вошедшего он сразу отправляет во вкладки */}
         <Stack.Screen name="index" options={{ animation: 'none' }} />
-        {/* после входа назад на лендинг не уводим */}
-        <Stack.Screen name="menu" options={{ animation: 'fade', gestureEnabled: false }} />
+        {/* вкладки «Главная» и «Профиль» — дом вошедшего; назад на лендинг с них не уводим */}
+        <Stack.Screen name="(tabs)" options={{ animation: 'fade', gestureEnabled: false }} />
         {/* сцена, жюри и разбор — один раунд: открываются плавно, как занавес, и свайпом их не закрыть, чтобы не оборвать запись */}
         <Stack.Screen name="stage" options={{ animation: 'fade', gestureEnabled: false }} />
         <Stack.Screen name="jury" options={{ animation: 'fade', gestureEnabled: false }} />

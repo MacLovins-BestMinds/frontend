@@ -20,6 +20,7 @@ import { c, font, outline, shadow } from '@/design/theme';
 import { useLayout } from '@/hooks/useLayout';
 
 import { Backdrop } from './Backdrop';
+import { useDockInset } from './Dock';
 
 type Children = { children?: ReactNode };
 
@@ -36,9 +37,11 @@ const enter = Platform.OS === 'web' ? FadeInDown.duration(320).withInitialValues
 export function Page({ children, scroll = true, sticky = false, footer }: Children & { scroll?: boolean; sticky?: boolean; footer?: ReactNode }) {
   const insets = useSafeAreaInsets();
   const sides = { paddingLeft: insets.left, paddingRight: insets.right };
-  // контенту нужен отступ снизу на высоту панели, иначе последние карточки окажутся под ней
+  // контенту нужен отступ снизу на высоту панели, иначе последние карточки окажутся под ней;
+  // на вкладках сайта снизу висит док — место оставляем и под него (его высота уже включает безопасную зону)
   const [footerHeight, setFooterHeight] = useState(0);
-  const bottom = footer ? footerHeight + 16 : insets.bottom + 16;
+  const dock = useDockInset();
+  const bottom = footer ? footerHeight + 16 : dock ? dock + 8 : insets.bottom + 16;
   return (
     <View style={styles.page}>
       <Backdrop />
@@ -46,13 +49,13 @@ export function Page({ children, scroll = true, sticky = false, footer }: Childr
         {scroll ? (
           <ScrollView
             contentContainerStyle={[styles.pageContent, { paddingTop: sticky ? 0 : insets.top, paddingBottom: bottom }]}
-            scrollIndicatorInsets={{ top: sticky ? 0 : insets.top, bottom: footer ? footerHeight : insets.bottom }}
+            scrollIndicatorInsets={{ top: sticky ? 0 : insets.top, bottom: footer ? footerHeight : dock || insets.bottom }}
             keyboardShouldPersistTaps="handled"
             stickyHeaderIndices={sticky ? [0] : undefined}>
             {children}
           </ScrollView>
         ) : (
-          <View style={[styles.body, { paddingTop: insets.top, paddingBottom: footer ? footerHeight : insets.bottom }]}>{children}</View>
+          <View style={[styles.body, { paddingTop: insets.top, paddingBottom: footer ? footerHeight : dock || insets.bottom }]}>{children}</View>
         )}
       </Animated.View>
       {footer ? (
