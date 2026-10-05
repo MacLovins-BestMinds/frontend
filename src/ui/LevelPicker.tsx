@@ -7,6 +7,9 @@ import { translate, useT } from '@/i18n';
 /** Уровень меняет весь раунд: тему, время на подготовку, строгость разбора, жюри и зала. Названия — в словаре common. */
 export const LEVELS: Difficulty[] = ['easy', 'medium', 'hard'];
 
+/** Сколько минут на подготовку даёт уровень (как LEVEL_TIMING на сервере) — для подписи на кнопке «к подготовке». */
+export const PREP_MIN: Record<Difficulty, number> = { easy: 5, medium: 4, hard: 3 };
+
 const isLevel = (id: string): id is Difficulty => (LEVELS as string[]).includes(id);
 
 /** Название уровня на текущем языке; вызывать при отрисовке экрана, который сам подписан на язык (useT). */

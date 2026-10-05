@@ -26,6 +26,8 @@ export default strings(
     pronWords: 'Words worth practising: {words}.',
     backToProgress: 'Back to your progress',
     another: 'Another round',
+    pitchAgain: 'Pitch it again',
+    errOpen: 'Could not open the round: {message}',
     yourProgress: 'Your progress',
 
     highlights: 'Highlights',
@@ -87,6 +89,8 @@ export default strings(
       pronWords: 'Слова, которые стоит потренировать: {words}.',
       backToProgress: 'Назад к прогрессу',
       another: 'Ещё раунд',
+      pitchAgain: 'Выступить ещё раз',
+      errOpen: 'Раунд не открылся: {message}',
       yourProgress: 'Твой прогресс',
 
       highlights: 'Главное',
@@ -147,6 +151,8 @@ export default strings(
       pronWords: 'Cuvinte de exersat: {words}.',
       backToProgress: 'Înapoi la progres',
       another: 'Încă o rundă',
+      pitchAgain: 'Prezintă din nou',
+      errOpen: 'Runda nu a putut fi deschisă: {message}',
       yourProgress: 'Progresul tău',
 
       highlights: 'Pe scurt',

@@ -1,5 +1,5 @@
-import { Redirect, router } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { Redirect, router, useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { api } from '@/api/client';
@@ -9,8 +9,11 @@ import { c, font, formatDay, outline, shadow } from '@/design/theme';
 import { useLayout } from '@/hooks/useLayout';
 import { useT } from '@/i18n';
 import { rankLabel } from '@/i18n/ranks';
-import { useGame } from '@/store/game';
+import { useGame, useUnfinishedRound } from '@/store/game';
 import { AppHeader } from '@/ui/AppHeader';
+import { confirm } from '@/ui/confirm';
+import { useSwitchTab } from '@/ui/nav';
+import { okToStartNewRound } from '@/ui/newRound';
 import { DashedLine, Tape, TrendArrow, Wheel } from '@/ui/decor';
 import { LevelPicker } from '@/ui/LevelPicker';
 import { Button, Card, Chip, Container, ErrorText, H1, H3, Label, Muted, P, Page, Small } from '@/ui/primitives';
@@ -21,40 +24,60 @@ export default function Menu() {
   const { wide } = useLayout();
   const user = useGame((s) => s.user);
   const startTopic = useGame((s) => s.startTopic);
+  const discardRound = useGame((s) => s.discardRound);
+  const switchTab = useSwitchTab();
+  const unfinished = useUnfinishedRound();
   const difficulty = useGame((s) => s.difficulty);
   const setDifficulty = useGame((s) => s.setDifficulty);
   const [daily, setDaily] = useState<{ date: string; topic: Case } | null>(null);
   const [leaders, setLeaders] = useState<LeaderboardEntry[]>([]);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [error, setError] = useState('');
+  const [attempt, setAttempt] = useState(0);
+  const setOwnDraft = useGame((s) => s.setOwnDraft);
   const [trainingWidth, setTrainingWidth] = useState(0);
 
-  // язык сменили — тему дня запрашиваем заново: её текст сервер присылает на языке интерфейса
-  useEffect(() => {
-    if (!user) return;
-    setError('');
-    api
-      .daily()
-      .then((d) => setDaily({ date: d.date, topic: d.case }))
-      .catch((e: Error) => setError(t('errDaily', { message: e.message })));
-    api.leaderboard().then(setLeaders).catch(() => setLeaders([]));
-    api.profile(user.user_id).then(setProfile).catch(() => setProfile(null));
-  }, [user, t]);
+  // Вкладка остаётся в памяти: тему дня, рейтинг и звание обновляем при каждом заходе на неё — после раунда
+  // здесь уже новое звание и место в рейтинге. Язык сменили — тоже заново: текст темы сервер присылает на языке интерфейса.
+  useFocusEffect(
+    useCallback(() => {
+      if (!user) return undefined;
+      let alive = true;
+      api
+        .daily()
+        .then((d) => {
+          if (!alive) return;
+          setDaily({ date: d.date, topic: d.case });
+          setError('');
+        })
+        .catch((e: Error) => alive && setError(t('errDaily', { message: e.message })));
+      api.leaderboard().then((l) => alive && setLeaders(l)).catch(() => alive && setLeaders([]));
+      api.profile(user.user_id).then((pr) => alive && setProfile(pr)).catch(() => undefined);
+      return () => {
+        alive = false;
+      };
+    }, [user, t, attempt]),
+  );
 
   if (!user) return <Redirect href="/" />;
+
+  /** Бросить незаконченный раунд — только осознанно: его питч и разбор не сохранятся. */
+  const discard = async () => {
+    if (await confirm({ title: t('discardTitle'), message: t('discardText'), ok: t('discard'), cancel: tc('cancel'), destructive: true })) discardRound();
+  };
 
   const rank = profile?.rank ?? user.rank;
   const rounds = profile?.last_rounds ?? [];
   const average = rounds.length ? Math.round(rounds.reduce((sum, r) => sum + r.total, 0) / rounds.length) : null;
-  const goDaily = () => {
-    if (!daily) return;
+  const goDaily = async () => {
+    if (!daily || !(await okToStartNewRound())) return;
     startTopic('daily', daily.topic);
     router.push('/prep');
   };
   const audience = daily ? findAudience(daily.topic.audience)?.name ?? daily.topic.audience : '';
 
   const rankCard = (
-    <Pressable accessibilityRole="link" accessibilityLabel={t('profileLink')} onPress={() => router.push('/profile')} style={[styles.rank, wide ? styles.rankWide : styles.rankNarrow]}>
+    <Pressable accessibilityRole="link" accessibilityLabel={t('profileLink')} onPress={() => switchTab('profile')} style={[styles.rank, wide ? styles.rankWide : styles.rankNarrow]}>
       <View style={styles.rankText}>
         <Label style={styles.rankLabel}>{t('rank')}</Label>
         <Text style={[styles.rankTitle, !wide && { fontSize: 16, lineHeight: 21 }]}>{rankLabel(tc, rank.title)}</Text>
@@ -93,9 +116,10 @@ export default function Menu() {
         <Label style={styles.grow}>{tc('mode.daily')}</Label>
         {daily && <Chip title={formatDay(daily.date)} />}
       </View>
-      <H3 style={wide ? styles.posterTitle : undefined}>{daily ? daily.topic.title : tc('loading')}</H3>
+      <H3 style={wide ? styles.posterTitle : undefined}>{daily ? daily.topic.title : error ? '—' : tc('loading')}</H3>
       {daily && <Muted>{t('audience', { audience: audience.toLowerCase() })}</Muted>}
       <ErrorText>{error}</ErrorText>
+      {error && !daily ? <Button title={tc('tryAgain')} variant="secondary" size="sm" onPress={() => setAttempt((n) => n + 1)} style={styles.retry} /> : null}
       {leaders.length > 0 && (
         <View style={styles.leaders}>
           <DashedLine color={c.ink} style={styles.leadersRule} />
@@ -127,7 +151,14 @@ export default function Menu() {
       {wide && (
         <View style={styles.audiences}>
           {audiences().map((a) => (
-            <Chip key={a.id} title={a.name} />
+            <Chip
+              key={a.id}
+              title={a.name}
+              onPress={() => {
+                setOwnDraft({ audience: a.id });
+                router.push('/own');
+              }}
+            />
           ))}
         </View>
       )}
@@ -144,7 +175,7 @@ export default function Menu() {
   return (
     <Page sticky>
       {/* ник и звание — в приветствии ниже; профиль — вкладка (док внизу, панель в приложении, ссылка в шапке на компьютере) */}
-      <AppHeader nav="menu" />
+      <AppHeader tab="menu" />
       <Container style={[styles.main, !wide && styles.mainNarrow]}>
         <View style={styles.hello}>
           <View style={styles.grow}>
@@ -153,6 +184,18 @@ export default function Menu() {
           </View>
           {rankCard}
         </View>
+        {/* незаконченный раунд: питч разобран, жюри ждёт — сюда попадают, если ушли с раунда назад */}
+        {unfinished ? (
+          <Card tone="accent" style={styles.unfinished}>
+            <Label style={styles.ink}>{t('unfinishedLabel')}</Label>
+            <H3>{unfinished.title}</H3>
+            <P>{t('unfinishedText')}</P>
+            <View style={styles.unfinishedActions}>
+              <Button title={t('continueRound')} variant="ink" onPress={() => router.push('/jury')} />
+              <Button title={t('discard')} variant="secondary" size="sm" onPress={() => void discard()} />
+            </View>
+          </Card>
+        ) : null}
         {/* свой питч невысокий: на компьютере — сразу под приветствием, на телефоне — под колесом */}
         {wide ? own : null}
         <View style={styles.levelBlock}>
@@ -174,6 +217,9 @@ const styles = StyleSheet.create({
   mainNarrow: { paddingTop: 4, paddingBottom: 32, gap: 20 },
   grow: { flex: 1 },
   levelBlock: { gap: 8 },
+  retry: { alignSelf: 'flex-start' },
+  unfinished: { gap: 8 },
+  unfinishedActions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 12, marginTop: 4 },
   ink: { color: c.ink },
   hello: { flexDirection: 'row', alignItems: 'flex-end', flexWrap: 'wrap', gap: 20 },
   lead: { fontSize: 20, lineHeight: 28, marginTop: 6 },

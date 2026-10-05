@@ -1,5 +1,5 @@
-import { Redirect, router } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { Redirect, router, useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Line, Path, Text as SvgText } from 'react-native-svg';
 
@@ -123,34 +123,37 @@ export default function Profile() {
   const { wide } = useLayout();
   const user = useGame((s) => s.user);
   const signOut = useGame((s) => s.signOut);
-  const openReview = useGame((s) => s.openReview);
   const [progress, setProgress] = useState<Progress | null>(null);
   const [error, setError] = useState('');
-  const [opening, setOpening] = useState<string | null>(null);
 
-  // советы и названия навыков сервер присылает на языке интерфейса — при смене языка загружаем заново
-  useEffect(() => {
-    if (!user) return;
-    api
-      .progress()
-      .then(setProgress)
-      .catch((e: Error) => setError(translate('profile', 'errLoad', { message: e.message })));
-  }, [user, lang]);
+  const [attempt, setAttempt] = useState(0);
+
+  // Вкладка остаётся в памяти, поэтому загружаем прогресс при каждом заходе на неё: после раунда тут уже новый
+  // балл и звание. Пока грузится, видно прежнее. Советы и названия навыков сервер присылает на языке интерфейса —
+  // при смене языка загружаем заново.
+  useFocusEffect(
+    useCallback(() => {
+      if (!user) return undefined;
+      let alive = true;
+      api
+        .progress()
+        .then((data) => {
+          if (!alive) return;
+          setProgress(data);
+          setError('');
+        })
+        .catch((e: Error) => alive && setError(translate('profile', 'errLoad', { message: e.message })));
+      return () => {
+        alive = false;
+      };
+    }, [user, lang, attempt]),
+  );
 
   if (!user) return <Redirect href="/" />;
 
-  const open = async (round: HistoryRound) => {
-    setOpening(round.id);
-    setError('');
-    try {
-      openReview(await api.roundReview(round.id));
-      router.push('/result');
-    } catch (e) {
-      setError(t('errOpen', { message: (e as Error).message }));
-    } finally {
-      setOpening(null);
-    }
-  };
+  // разбор старого раунда открывается сразу и грузится сам (адрес /result?round=<id>): никаких гонок двойного
+  // нажатия и ошибок вверху страницы, далеко от нажатой строки
+  const open = (round: HistoryRound) => router.push({ pathname: '/result', params: { round: round.id } });
 
   const rank = progress?.rank ?? user.rank;
   const current = [...RANKS].reverse().find((r) => (progress?.rank_score ?? 0) >= r.from) ?? RANKS[0];
@@ -168,7 +171,7 @@ export default function Profile() {
   return (
     <Page sticky>
       {/* профиль — вкладка: «назад» ей не нужен, а выход лежит внизу страницы, подальше от случайного нажатия */}
-      <AppHeader nav="profile" />
+      <AppHeader tab="profile" />
       <Container style={[styles.main, !wide && styles.mainNarrow]}>
         <View style={[styles.row, !wide && styles.column]}>
           <View style={[styles.hero, wide && styles.heroWide]}>
@@ -189,6 +192,10 @@ export default function Profile() {
               ) : progress ? (
                 <Text style={styles.heroNote}>{t('topRank')}</Text>
               ) : null}
+              {/* выход — у ника, а не под историей из сотни раундов */}
+              <Pressable accessibilityRole="button" onPress={() => (signOut(), router.replace('/'))} hitSlop={8} style={({ pressed }) => [styles.signOut, pressed && { opacity: 0.6 }]}>
+                <Text style={styles.signOutText}>{t('signOut')}</Text>
+              </Pressable>
             </View>
             <Stamp title={rankLabel(tc, rank.title)} caption={t('rank')} trend={rank.trend} size={wide ? 140 : 104} color={c.orange} tilt={-9} />
           </View>
@@ -210,6 +217,7 @@ export default function Profile() {
         </View>
 
         <ErrorText>{error}</ErrorText>
+        {error && !progress ? <Button title={tc('tryAgain')} variant="secondary" size="sm" onPress={() => setAttempt((n) => n + 1)} style={styles.start} /> : null}
         {!progress && !error && <ActivityIndicator color={c.ink} />}
 
         {progress && progress.rounds_total === 0 && (
@@ -307,17 +315,13 @@ export default function Profile() {
                       {r.mode !== 'warmup' && <Chip title={t('jury', { n: r.jury.toFixed(0) })} />}
                     </View>
                   )}
-                  {opening === r.id ? <ActivityIndicator color={c.ink} /> : <TrendArrow trend="flat" size={20} color={c.ink} />}
+                  <TrendArrow trend="flat" size={20} color={c.ink} />
                 </Pressable>
               ))}
             </Card>
           </>
         )}
 
-        <View style={styles.account}>
-          <Muted>{t('signedInAs', { nick: user.nick })}</Muted>
-          <Button title={t('signOut')} variant="secondary" size="sm" onPress={() => (signOut(), router.replace('/'))} />
-        </View>
       </Container>
     </Page>
   );
@@ -325,7 +329,6 @@ export default function Profile() {
 
 const styles = StyleSheet.create({
   main: { paddingTop: 12, paddingBottom: 48, gap: 28 },
-  account: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingTop: 8 },
   mainNarrow: { gap: 20 },
   grow: { flex: 1 },
   row: { flexDirection: 'row', alignItems: 'stretch', gap: 28 },
@@ -337,6 +340,8 @@ const styles = StyleSheet.create({
   rankBar: { height: 16, borderRadius: 8, borderWidth: 2, borderColor: c.onInk, overflow: 'hidden' },
   rankFill: { height: '100%', backgroundColor: c.orange },
   heroNote: { fontFamily: font.body, fontSize: 15, lineHeight: 21, color: c.onInkMuted },
+  signOut: { alignSelf: 'flex-start', minHeight: 32, justifyContent: 'center' },
+  signOutText: { fontFamily: font.semi, fontSize: 15, color: c.onInk, textDecorationLine: 'underline' },
   tiles: { flexDirection: 'row', flexWrap: 'wrap', gap: 14 },
   tilesWide: { flex: 1, gap: 18 },
   tile: { flexGrow: 1, flexBasis: '40%', backgroundColor: c.paper, borderRadius: 18, padding: 16, gap: 2, ...outline },

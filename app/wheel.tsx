@@ -13,13 +13,12 @@ import { useLang, useT } from '@/i18n';
 import { useGame } from '@/store/game';
 import { AppHeader } from '@/ui/AppHeader';
 import { goBack } from '@/ui/nav';
+import { okToStartNewRound } from '@/ui/newRound';
 import { TicketButton, Wheel } from '@/ui/decor';
-import { LevelPicker } from '@/ui/LevelPicker';
+import { LevelPicker, PREP_MIN } from '@/ui/LevelPicker';
 import { Button, Card, Container, ErrorText, H1, H3, Label, Muted, Page } from '@/ui/primitives';
 
 const SPIN_MS = 1400;
-// сколько минут на подготовку даёт каждый уровень
-const PREP_MIN: Record<Difficulty, number> = { easy: 5, medium: 4, hard: 3 };
 type Phase = 'idle' | 'category' | 'case' | 'done';
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -63,7 +62,8 @@ export default function WheelScreen() {
   };
 
   useEffect(() => {
-    run();
+    // без входа экран сейчас уйдёт на лендинг — сервер не спрашиваем
+    if (useGame.getState().user) run();
     // крутим один раз при входе
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -94,9 +94,12 @@ export default function WheelScreen() {
               title={t('take')}
               stubTop={tc('minutes', { n: PREP_MIN[difficulty] })}
               stubBottom="→"
-              onPress={() => {
+              onPress={async () => {
+                // незаконченный раунд не пропадает молча: сначала спрашиваем
+                if (!(await okToStartNewRound())) return;
                 startTopic('training', spin.case);
-                router.push('/prep');
+                // колесо заменяется подготовкой: дальше идёт раунд, «назад» из него ведёт на «Главную» (docs/ux.md)
+                router.replace('/prep');
               }}
               stretch={!wide}
             />
@@ -104,7 +107,7 @@ export default function WheelScreen() {
           <Button title={t('again')} variant="secondary" disabled={spinning} onPress={() => run()} style={!wide ? styles.full : undefined} />
         </View>
       }>
-      <AppHeader back={() => goBack()} />
+      <AppHeader corner={{ icon: 'back', label: tc('back'), onPress: () => goBack() }} />
       <Container style={[styles.main, wide && styles.mainWide]}>
         <View style={[styles.wheelBox, wide && styles.wheelBoxWide]}>
           <Svg width={34} height={38} viewBox="0 0 28 32" style={styles.pointer}>
@@ -129,7 +132,7 @@ export default function WheelScreen() {
           />
           <Card flat>
             <Label>{t('category')}</Label>
-            <H3>{spin ? spin.category.title : t('spinning')}</H3>
+            <H3>{spin ? spin.category.title : spinning ? t('spinning') : '—'}</H3>
           </Card>
           <Card>
             <Label>{t('whatYouPitch')}</Label>

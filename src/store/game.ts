@@ -1,8 +1,8 @@
 import { create } from 'zustand';
 
-import { mediaUrl, onUnauthorized, setAuthToken } from '@/api/client';
+import { onUnauthorized, setAuthToken } from '@/api/client';
 import type { Slide } from '@/slides/render';
-import type { BetterVersion, Case, Delivery, Difficulty, Finish, Flow, HistoryRound, Pace, PitchLimits, JuryAnswer, JuryQuestion, Mode, OwnPitchInput, Round, RoundReview, User } from '@/api/types';
+import type { BetterVersion, Case, Delivery, Difficulty, Finish, Flow, Pace, PitchLimits, JuryAnswer, JuryQuestion, Mode, OwnPitchInput, Round, User } from '@/api/types';
 
 // вход помнится между запусками: на сайте — localStorage, в приложении — файл в папке документов (session.ts)
 import { loadSession, saveSession } from './session';
@@ -13,8 +13,6 @@ setAuthToken(saved?.token ?? null);
 type GameState = {
   user: User | null;
   token: string | null;
-  /** Открыт разбор старого раунда из истории (записи у него нет); null — только что сыгранный раунд. */
-  reviewOf: HistoryRound | null;
   /** Какой камерой снимать выступление: фронтальной или задней. */
   camera: 'user' | 'environment';
   setCamera: (camera: 'user' | 'environment') => void;
@@ -27,16 +25,20 @@ type GameState = {
   /** Уровень сложности раунда. */
   difficulty: Difficulty;
   setDifficulty: (difficulty: Difficulty) => void;
+  /** Черновик своего питча: живёт, пока игрок ходит туда-обратно между экранами, и пропадает только при выходе. */
+  ownDraft: OwnPitchInput;
+  setOwnDraft: (patch: Partial<OwnPitchInput>) => void;
   /** Своя длина питча в секундах; null — как задаёт уровень. Это настройка игрока, между раундами не сбрасывается. */
   pitchLimits: PitchLimits | null;
   setPitchLimits: (limits: PitchLimits | null) => void;
   signIn: (user: User, token: string) => void;
   signOut: () => void;
-  openReview: (review: RoundReview) => void;
   mode: Mode;
   topic: Case | null;
   ownPitch: OwnPitchInput | null;
   round: Round | null;
+  /** Уровень, с которым создан текущий раунд: жюри спрашивает и оценивает по нему, даже если на «Главной» выбрали другой. */
+  roundDifficulty: Difficulty | null;
   notes: string;
   delivery: Delivery | null;
   juryAnswers: JuryAnswer[];
@@ -56,22 +58,24 @@ type GameState = {
   setPitchAudio: (uri: string | null) => void;
   startTopic: (mode: Mode, topic: Case) => void;
   startOwnPitch: (own: OwnPitchInput) => void;
-  setRound: (round: Round) => void;
+  setRound: (round: Round, difficulty: Difficulty) => void;
   setNotes: (notes: string) => void;
   setDelivery: (delivery: Delivery) => void;
   addJuryAnswer: (answer: JuryAnswer) => void;
   setResult: (result: Finish) => void;
+  /** Бросить незаконченный раунд: питч и его разбор не сохраняются, «Главная» больше не предлагает продолжить. */
+  discardRound: () => void;
 };
 
 export const useGame = create<GameState>((set) => ({
   user: saved?.user ?? null,
   token: saved?.token ?? null,
-  reviewOf: null,
   camera: 'user',
   pace: 'normal',
   difficulty: 'easy',
   slides: [],
   pitchLimits: null,
+  ownDraft: { title: '', text: '', audience: 'business' },
   juryQuestions: [],
   flow: null,
   betterVersion: null,
@@ -82,6 +86,7 @@ export const useGame = create<GameState>((set) => ({
   topic: null,
   ownPitch: null,
   round: null,
+  roundDifficulty: null,
   notes: '',
   delivery: null,
   juryAnswers: [],
@@ -92,6 +97,7 @@ export const useGame = create<GameState>((set) => ({
   setDifficulty: (difficulty) => set({ difficulty }),
   setSlides: (slides) => set({ slides }),
   setPitchLimits: (pitchLimits) => set({ pitchLimits }),
+  setOwnDraft: (patch) => set((s) => ({ ownDraft: { ...s.ownDraft, ...patch } })),
   signIn: (user, token) => {
     setAuthToken(token);
     saveSession({ user, token });
@@ -100,29 +106,33 @@ export const useGame = create<GameState>((set) => ({
   signOut: () => {
     setAuthToken(null);
     saveSession(null);
-    set({ user: null, token: null, round: null, delivery: null, result: null, reviewOf: null, juryAnswers: [], juryQuestions: [], flow: null, betterVersion: null, pitchAudioUri: null, pitchVideoUri: null });
-  },
-  openReview: (review) =>
+    // всё, что относится к прошлому игроку, — прочь: тема, свой питч, слайды, заметки и своя длина питча
     set({
-      reviewOf: review.round,
-      mode: review.round.mode as Mode,
-      topic: { id: review.round.id, title: review.round.title, brief: '', audience: '' },
+      user: null,
+      token: null,
+      mode: 'training',
+      topic: null,
+      ownPitch: null,
+      ownDraft: { title: '', text: '', audience: 'business' },
+      notes: '',
+      slides: [],
+      pitchLimits: null,
       round: null,
-      delivery: review.delivery,
-      juryQuestions: review.jury_questions,
-      juryAnswers: review.jury_answers,
-      result: review.result,
-      flow: review.flow ?? null,
-      betterVersion: review.better_version ?? null,
-      // звук хранится на сервере — старое выступление можно переслушать; видео остаётся только у только что сыгранного
-      pitchAudioUri: review.audio_url ? mediaUrl(review.audio_url) : null,
+      delivery: null,
+      result: null,
+      juryAnswers: [],
+      juryQuestions: [],
+      flow: null,
+      betterVersion: null,
+      pitchAudioUri: null,
       pitchVideoUri: null,
-    }),
+    });
+  },
   setJuryQuestions: (juryQuestions) => set({ juryQuestions }),
   setPitchAudio: (pitchAudioUri) => set({ pitchAudioUri }),
   setPitchVideo: (pitchVideoUri, pitchVideoOffset) => set({ pitchVideoUri, pitchVideoOffset }),
   startTopic: (mode, topic) =>
-    set({ mode, topic, ownPitch: null, round: null, notes: '', delivery: null, juryAnswers: [], juryQuestions: [], flow: null, betterVersion: null, pitchAudioUri: null, pitchVideoUri: null, result: null, reviewOf: null, slides: [] }),
+    set({ mode, topic, ownPitch: null, round: null, notes: '', delivery: null, juryAnswers: [], juryQuestions: [], flow: null, betterVersion: null, pitchAudioUri: null, pitchVideoUri: null, result: null, slides: [] }),
   startOwnPitch: (own) =>
     set({
       mode: 'own',
@@ -143,12 +153,13 @@ export const useGame = create<GameState>((set) => ({
       pitchAudioUri: null,
       pitchVideoUri: null,
       result: null,
-      reviewOf: null,
     }),
-  setRound: (round) => set({ round }),
+  setRound: (round, roundDifficulty) => set({ round, roundDifficulty }),
   setNotes: (notes) => set({ notes }),
   setDelivery: (delivery) => set({ delivery }),
   addJuryAnswer: (answer) => set((s) => ({ juryAnswers: [...s.juryAnswers, answer] })),
+  discardRound: () =>
+    set({ round: null, delivery: null, result: null, juryAnswers: [], juryQuestions: [], flow: null, betterVersion: null, pitchAudioUri: null, pitchVideoUri: null }),
   setResult: (result) =>
     set((s) => {
       const user = s.user ? { ...s.user, rank: result.rank } : s.user;
@@ -163,4 +174,15 @@ onUnauthorized(() => useGame.getState().signOut());
 /** Сколько говорить в этом раунде: своя длина игрока или лимиты уровня, которые прислал сервер. */
 export function pitchLimitsFor(round: Round | null, custom: PitchLimits | null): PitchLimits {
   return custom ?? { min: round?.pitch_min_sec ?? 60, max: round?.pitch_max_sec ?? 180 };
+}
+
+/**
+ * Раунд, который можно продолжить: питч уже разобран, а итога ещё нет (игрок ушёл с жюри назад, со сцены
+ * во время разбора или вышел из браузера назад). «Главная» предлагает вернуться к жюри — питч не теряется.
+ */
+export function useUnfinishedRound(): { title: string; answered: number } | null {
+  // селекторы отдают примитивы: новый объект на каждый вызов zustand 5 счёл бы изменением и зациклил перерисовку
+  const title = useGame((s) => (s.round && s.delivery && !s.result && s.topic ? s.topic.title : null));
+  const answered = useGame((s) => s.juryAnswers.length);
+  return title === null ? null : { title, answered };
 }

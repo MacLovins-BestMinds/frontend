@@ -1,7 +1,9 @@
-import { Redirect, router } from 'expo-router';
-import { useRef } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Redirect, router, useLocalSearchParams } from 'expo-router';
+import { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
+import { api, mediaUrl } from '@/api/client';
+import type { Mode, RoundReview } from '@/api/types';
 import { c, font, formatDate } from '@/design/theme';
 import { useReviewInsights } from '@/hooks/useInsights';
 import { useLayout } from '@/hooks/useLayout';
@@ -11,24 +13,113 @@ import { useGame } from '@/store/game';
 import { AppHeader } from '@/ui/AppHeader';
 import { BetterVersion } from '@/ui/BetterVersion';
 import { Highlights } from '@/ui/Highlights';
-import { goMenu, goTab } from '@/ui/nav';
+import { goBack, goMenu, goTab, useBackAction } from '@/ui/nav';
 import { DashedLine, Paddle, Stamp } from '@/ui/decor';
 import type { PitchPlayerHandle } from '@/ui/PitchPlayer';
 import { Recording } from '@/ui/Recording';
-import { Button, Card, Container, H1, H3, Label, Muted, P, Page, Small } from '@/ui/primitives';
+import { Button, Card, Container, ErrorText, H1, H3, Label, Muted, P, Page, Small } from '@/ui/primitives';
 
 export default function Result() {
   const t = useT('result');
   const tc = useT('common');
   const { wide } = useLayout();
-  const { result, delivery, juryAnswers, juryQuestions, pitchAudioUri, pitchVideoUri, pitchVideoOffset, mode, reviewOf, round, flow, betterVersion } = useGame();
+  const user = useGame((s) => s.user);
+  const live = useGame();
+  // Разбор из истории открывается по адресу /result?round=<id>: его можно обновить в браузере, и он грузится сам.
+  // Без round — разбор только что сыгранного раунда (из памяти).
+  const { round: historyId } = useLocalSearchParams<{ round?: string }>();
+  const history = !!historyId;
+  // разбор из истории живёт только на этом экране: открыть его не значит тронуть текущий раунд —
+  // незаконченный раунд остаётся, и «Главная» по-прежнему предлагает его продолжить
+  const [review, setReview] = useState<RoundReview | null>(null);
+  const [loadError, setLoadError] = useState('');
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    // без входа экран уходит на лендинг — разбор у сервера не спрашиваем
+    if (!user || !historyId) return;
+    let alive = true;
+    setLoadError('');
+    api
+      .roundReview(historyId)
+      .then((loaded) => alive && setReview(loaded))
+      .catch((e: Error) => alive && setLoadError(t('errOpen', { message: e.message })));
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, historyId, attempt]);
+  const old = history && review?.round.id === historyId ? review : null;
+  const shown = old
+    ? {
+        id: old.round.id,
+        result: old.result,
+        delivery: old.delivery,
+        juryAnswers: old.jury_answers,
+        juryQuestions: old.jury_questions,
+        mode: old.round.mode as Mode,
+        // звук хранится на сервере — старое выступление можно переслушать; видео есть только у только что сыгранного
+        pitchAudioUri: old.audio_url ? mediaUrl(old.audio_url) : null,
+        pitchVideoUri: null,
+        pitchVideoOffset: 0,
+        flow: old.flow ?? null,
+        betterVersion: old.better_version ?? null,
+      }
+    : {
+        id: live.round?.round_id ?? null,
+        // разбор из истории ещё грузится — данные текущего раунда здесь не показываем и не дозапрашиваем
+        result: history ? null : live.result,
+        delivery: history ? null : live.delivery,
+        juryAnswers: live.juryAnswers,
+        juryQuestions: live.juryQuestions,
+        mode: live.mode,
+        pitchAudioUri: live.pitchAudioUri,
+        pitchVideoUri: live.pitchVideoUri,
+        pitchVideoOffset: live.pitchVideoOffset,
+        flow: live.flow,
+        betterVersion: live.betterVersion,
+      };
+  const { result, delivery, juryAnswers, juryQuestions, mode, pitchAudioUri, pitchVideoUri, pitchVideoOffset } = shown;
   // ход мысли и питч без запинок готовятся на сервере в фоне: у раунда из истории могут прийти готовыми
-  const insights = useReviewInsights(delivery ? (reviewOf?.id ?? round?.round_id ?? null) : null, flow, betterVersion);
+  const insights = useReviewInsights(delivery ? shown.id : null, shown.flow, shown.betterVersion);
   // играет что-то одно: запись выступления или озвучка без запинок
   const recording = useRef<PitchPlayerHandle>(null);
   const polished = useRef<PitchPlayerHandle>(null);
+  // угловая кнопка: только что сыгранный раунд окончен — домой; разбор из истории — назад в профиль.
+  // Системная «назад» на Android делает то же самое (docs/ux.md)
+  const leave = () => (history ? goBack('/profile') : goMenu());
+  useBackAction(leave);
+  const corner = history
+    ? { icon: 'back' as const, label: t('backToProgress'), onPress: leave }
+    : { icon: 'home' as const, label: tc('home'), onPress: leave };
 
+  if (!user) return <Redirect href="/" />;
+  // разбор из истории ещё грузится (или не загрузился) — шапка с «назад» уже на месте
+  if (history && !old) {
+    return (
+      <Page sticky>
+        <AppHeader corner={corner} />
+        <Container style={styles.main}>
+          {loadError ? (
+            <Card flat style={styles.loadCard}>
+              <ErrorText>{loadError}</ErrorText>
+              <Button title={tc('tryAgain')} variant="secondary" size="sm" onPress={() => setAttempt((n) => n + 1)} style={styles.retry} />
+            </Card>
+          ) : (
+            <ActivityIndicator color={c.ink} style={styles.loading} />
+          )}
+        </Container>
+      </Page>
+    );
+  }
   if (!result) return <Redirect href="/" />;
+
+  /** Следующий раунд: свой питч — тот же текст ещё раз, иначе — колесо. Экран разбора заменяется следующим. */
+  const again = () => {
+    if (live.mode === 'own' && live.ownPitch) {
+      live.startOwnPitch(live.ownPitch);
+      router.replace('/prep');
+    } else router.replace('/wheel');
+  };
 
   const duration = delivery?.metrics.duration_sec ?? 0;
   const paddle = wide ? 150 : 88;
@@ -50,14 +141,13 @@ export default function Result() {
     </Card>
   ) : null;
 
-
   return (
     <Page sticky>
-      <AppHeader />
+      <AppHeader corner={corner} />
       <Container style={styles.main}>
         <View style={styles.head}>
           <H1 style={!wide && styles.titleNarrow}>{wide ? t('title') : t('titleShort')}</H1>
-          {reviewOf && <Muted>{t('fromHistory', { title: reviewOf.title, date: formatDate(reviewOf.created_at, { day: 'numeric', month: 'long' }) })}</Muted>}
+          {old && <Muted>{t('fromHistory', { title: old.round.title, date: formatDate(old.round.created_at, { day: 'numeric', month: 'long' }) })}</Muted>}
         </View>
 
         <View style={[styles.top, wide && styles.topWide]}>
@@ -101,7 +191,7 @@ export default function Result() {
                   videoOffset={pitchVideoOffset}
                   duration={duration}
                   wide={wide}
-                  noRecording={reviewOf ? t('noRecordingHistory') : t('noRecording')}
+                  noRecording={history ? t('noRecordingHistory') : t('noRecording')}
                 />
               </View>
 
@@ -142,12 +232,12 @@ export default function Result() {
         )}
 
         <View style={[styles.actions, !wide && styles.actionsNarrow]}>
-          {reviewOf ? (
-            <Button title={t('backToProgress')} onPress={() => goTab('/profile')} />
+          {history ? (
+            <Button title={t('backToProgress')} onPress={leave} />
           ) : (
-            <Button title={t('another')} onPress={() => router.replace('/wheel')} />
+            <Button title={live.mode === 'own' && live.ownPitch ? t('pitchAgain') : t('another')} onPress={again} />
           )}
-          <Button title={reviewOf ? tc('menu') : t('yourProgress')} variant="secondary" onPress={() => (reviewOf ? goMenu() : goTab('/profile'))} />
+          <Button title={history ? tc('home') : t('yourProgress')} variant="secondary" onPress={() => (history ? goMenu() : goTab('/profile'))} />
         </View>
       </Container>
     </Page>
@@ -156,6 +246,9 @@ export default function Result() {
 
 const styles = StyleSheet.create({
   main: { paddingTop: 8, paddingBottom: 64, gap: 24 },
+  loading: { marginTop: 48 },
+  loadCard: { gap: 12 },
+  retry: { alignSelf: 'flex-start' },
   grow: { flex: 1 },
   head: { gap: 4 },
   titleNarrow: { fontSize: 26, lineHeight: 32 },

@@ -1,4 +1,4 @@
-import { Redirect, router } from 'expo-router';
+import { Redirect } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -11,7 +11,7 @@ import { translate, useT } from '@/i18n';
 import { alarmPermission, enableAlarm, isAway, onReturn, ring, unlockSound, type AlarmPermission } from '@/notify/alarm';
 import { pitchLimitsFor, useGame } from '@/store/game';
 import { AppHeader } from '@/ui/AppHeader';
-import { goBack } from '@/ui/nav';
+import { goBack, useGoOnStage } from '@/ui/nav';
 import { Brief } from '@/ui/Brief';
 import { TicketButton } from '@/ui/decor';
 import { levelName } from '@/ui/LevelPicker';
@@ -37,7 +37,9 @@ const PREP_MAX_SEC = 30 * 60;
 export default function Prep() {
   useStayAwake();
   const t = useT('prep');
+  const tc = useT('common');
   const { wide } = useLayout();
+  const goOnStage = useGoOnStage();
   const { user, mode, topic, ownPitch, round, notes, pace, difficulty, pitchLimits, setRound, setNotes, setPace, setPitchLimits } = useGame();
   const [endsAt, setEndsAt] = useState<number | null>(null);
   const [left, setLeft] = useState<number | null>(null);
@@ -49,17 +51,21 @@ export default function Prep() {
   const [alarm, setAlarm] = useState<AlarmPermission>(alarmPermission);
   const [customMin, setCustomMin] = useState(() => (pitchLimits ? Math.round(pitchLimits.max / 60) : 7));
   const [customOpen, setCustomOpen] = useState(false);
+  // раунд не создался — «Попробовать ещё раз» увеличивает счётчик и запрос уходит снова
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     if (!user || !topic || round) return;
     const ownData = ownPitch ?? (mode === 'own' ? { title: topic.title, text: topic.brief, audience: topic.audience } : undefined);
+    setError('');
     api
       .createRound(user.user_id, mode, mode === 'own' ? undefined : topic.id, ownData, difficulty)
-      .then(setRound)
-      .catch((e: Error) => setError(t('errRound', { message: e.message })));
+      // ответ пришёл, когда игрок уже взял другую тему (быстро вернулся и выбрал снова) — этот раунд не наш
+      .then((created) => useGame.getState().topic === topic && setRound(created, difficulty))
+      .catch((e: Error) => useGame.getState().topic === topic && setError(t('errRound', { message: e.message })));
     // уровень выбран до подготовки и на ней не меняется
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, topic, ownPitch, round, mode, setRound]);
+  }, [user, topic, ownPitch, round, mode, setRound, attempt]);
 
   useEffect(() => {
     if (round && endsAt === null) setEndsAt(Date.now() + round.prep_sec * 1000);
@@ -114,7 +120,7 @@ export default function Prep() {
     // ушёл во время отсчёта — без него на сцену не выходим
     if (isAway()) return setGoIn(null);
     if (goIn <= 0) {
-      router.replace('/stage');
+      goOnStage();
       return;
     }
     const id = setTimeout(() => setGoIn(goIn - 1), 1000);
@@ -152,16 +158,22 @@ export default function Prep() {
       sticky
       footer={
         round ? (
-          <TicketButton title={t('ready')} stubTop={t('stubPitch')} stubBottom={formatRange(limits.min, limits.max)} onPress={() => router.replace('/stage')} stretch={!wide} />
+          <TicketButton title={t('ready')} stubTop={t('stubPitch')} stubBottom={formatRange(limits.min, limits.max)} onPress={() => goOnStage()} stretch={!wide} />
         ) : null
       }>
-      <AppHeader back={() => goBack()} />
+      <AppHeader corner={{ icon: 'back', label: tc('back'), onPress: () => goBack() }} />
       <Container style={[styles.main, wide && styles.mainWide]}>
         <View style={[styles.left, wide && styles.leftWide]}>
           <View style={styles.head}>
             <H1 style={!wide && styles.titleNarrow}>{t('title')}</H1>
             <Tag>{levelName(difficulty)}</Tag>
           </View>
+          {error && !round ? (
+            <Card tone="accent">
+              <P>{error}</P>
+              <Button size="sm" variant="ink" title={tc('tryAgain')} onPress={() => setAttempt((n) => n + 1)} style={styles.retry} />
+            </Card>
+          ) : null}
           <View style={[styles.board, hot && { borderColor: c.bad }]}>
             <Text style={styles.boardLabel}>{t('untilStage')}</Text>
             <Text style={[styles.timer, hot && { color: '#FF8A7A' }]}>{left === null ? '—:——' : formatTime(left)}</Text>
@@ -189,11 +201,13 @@ export default function Prep() {
               <Label style={{ color: c.ink }}>{t('timeUp')}</Label>
               {waiting ? <P>{t('waitingTab')}</P> : goIn !== null ? <P>{t('goingIn', { n: goIn })}</P> : null}
               <View style={styles.overActions}>
-                <Button size="sm" variant="ink" title={t('goNow')} onPress={() => router.replace('/stage')} />
+                <Button size="sm" variant="ink" title={t('goNow')} onPress={() => goOnStage()} />
                 <Button size="sm" variant="secondary" title={t('oneMore')} onPress={() => addTime(60)} />
               </View>
             </Card>
           )}
+          {/* на телефоне тема — сразу под таймером: о чём говорить, должно быть видно, пока идёт время */}
+          {!wide ? <Brief topic={topic} minSec={limits.min} maxSec={limits.max} /> : null}
           {alarm === 'default' ? (
             <Card flat style={styles.alarm}>
               <Label>{t('researching')}</Label>
@@ -246,11 +260,13 @@ export default function Prep() {
               })}
             </View>
           </View>
-          <ErrorText>{error}</ErrorText>
+          {round ? <ErrorText>{error}</ErrorText> : null}
         </View>
-        <View style={[styles.right, wide && styles.rightWide]}>
-          <Brief topic={topic} minSec={limits.min} maxSec={limits.max} />
-        </View>
+        {wide ? (
+          <View style={[styles.right, styles.rightWide]}>
+            <Brief topic={topic} minSec={limits.min} maxSec={limits.max} />
+          </View>
+        ) : null}
       </Container>
     </Page>
   );
@@ -271,6 +287,7 @@ const styles = StyleSheet.create({
   adjust: { flexDirection: 'row', gap: 8 },
   adjustButton: { borderRadius: 999, borderWidth: 2, borderColor: c.onInkMuted, paddingHorizontal: 12, minHeight: 34, justifyContent: 'center' },
   adjustText: { fontFamily: font.semi, fontSize: 14, color: c.onInk, fontVariant: ['tabular-nums'] },
+  retry: { alignSelf: 'flex-start', marginTop: 4 },
   overActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 6 },
   alarm: { gap: 6 },
   alarmButton: { alignSelf: 'flex-start', marginTop: 4 },

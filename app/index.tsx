@@ -1,6 +1,6 @@
 import { Redirect, router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { api } from '@/api/client';
@@ -91,8 +91,20 @@ export default function Landing() {
   const [creating, setCreating] = useState(false); // «создать аккаунт» вместо «войти»
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState(''); // «новый код в пути» после повторной отправки
 
-  const start = () => setLoginOpen(true);
+  /** Окно входа: «Войти» в шапке — для вернувшихся, главная кнопка лендинга — создать аккаунт (новые люди приходят с неё). */
+  const openLogin = (create: boolean) => {
+    setCreating(create);
+    setPending(null);
+    setError('');
+    setNotice('');
+    setLoginOpen(true);
+  };
+  // пока запрос идёт, окно не закрываем: иначе вход завершится «за кадром»
+  const closeLogin = () => {
+    if (!loading) setLoginOpen(false);
+  };
   const jump = (id: string) => scroll.current?.scrollTo({ y: anchors.current[id] ?? 0, animated: true });
   const mark = (id: string) => (e: { nativeEvent: { layout: { y: number } } }) => {
     anchors.current[id] = e.nativeEvent.layout.y;
@@ -120,9 +132,12 @@ export default function Landing() {
   const resend = async () => {
     if (!pending) return;
     setError('');
+    setNotice('');
     try {
       const sent = await api.resendCode(pending.email);
       setPending({ email: sent.email, sent: sent.sent, devCode: sent.dev_code });
+      setCode('');
+      if (sent.sent) setNotice(t('codeResent'));
     } catch (e) {
       setError((e as Error).message.replace(/^\d+: /, ''));
     }
@@ -164,9 +179,14 @@ export default function Landing() {
   if (user) return <Redirect href="/menu" />;
 
   const validEmail = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim());
-  const canEnter = pending ? code.trim().length >= 4 : validEmail && password.length >= 6 && (!creating || nick.trim().length >= 2);
+  // войти можно по почте или по нику (аккаунты, заведённые раньше по нику, тоже есть); создать — только с почтой
+  const canEnter = pending
+    ? code.trim().length >= 4
+    : creating
+      ? validEmail && password.length >= 6 && nick.trim().length >= 2
+      : email.trim().length >= 2 && password.length >= 6;
 
-  const cta = <TicketButton title={t('cta')} stubTop={t('ctaStubTop')} stubBottom={t('ctaStubBottom')} onPress={start} stretch={!wide} />;
+  const cta = <TicketButton title={t('cta')} stubTop={t('ctaStubTop')} stubBottom={t('ctaStubBottom')} onPress={() => openLogin(true)} stretch={!wide} />;
 
   return (
     <View style={styles.page}>
@@ -179,7 +199,7 @@ export default function Landing() {
         stickyHeaderIndices={[0]}>
         {/* та же стеклянная шапка, что и на остальных экранах; единственная кнопка — «Войти» */}
         <AppHeader>
-          <GlassButton title={t('signIn')} active onPress={start} />
+          <GlassButton title={t('signIn')} tone="ink" onPress={() => openLogin(false)} />
         </AppHeader>
 
         {/* Первый экран */}
@@ -333,7 +353,7 @@ export default function Landing() {
                   <Text style={styles.finalTagText}>{t('curtain')}</Text>
                 </View>
                 <H2 style={styles.finalTitle}>{t('finalTitle')}</H2>
-                <TicketButton title={t('cta')} stubTop={t('ctaStubTop')} stubBottom={t('ctaStubBottom')} onPress={start} style={styles.finalTicket} />
+                <TicketButton title={t('cta')} stubTop={t('ctaStubTop')} stubBottom={t('ctaStubBottom')} onPress={() => openLogin(true)} style={styles.finalTicket} />
               </Container>
             </>
           )}
@@ -350,21 +370,28 @@ export default function Landing() {
         </View>
       </ScrollView>
 
-      <Modal visible={loginOpen} transparent animationType="fade" onRequestClose={() => setLoginOpen(false)}>
-        <Pressable style={styles.backdrop} onPress={() => setLoginOpen(false)} accessibilityLabel={tc('close')}>
-          <Pressable style={styles.loginWrap} onPress={() => {}}>
+      <Modal visible={loginOpen} transparent animationType="fade" onRequestClose={closeLogin}>
+        {/* клавиатура не закрывает поля и кнопки: окно поднимается над ней и прокручивается, если не влезает */}
+        <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <View style={styles.backdrop}>
+            <Pressable style={StyleSheet.absoluteFill} onPress={closeLogin} accessibilityLabel={tc('close')} />
+            <ScrollView style={styles.loginScroll} contentContainerStyle={styles.loginScrollInner} keyboardShouldPersistTaps="handled">
             <Card style={styles.login}>
+              <View style={styles.close}>
+                <GlassButton icon="close" label={tc('close')} onPress={closeLogin} />
+              </View>
               {pending ? (
                 <>
                   <Label>{t('confirmEmail')}</Label>
                   <H3>{t('enterCode')}</H3>
-                  <Small>{pending.sent ? t('codeSent', { email: pending.email }) : t('codeHere', { code: pending.devCode ?? t('codeInLog') })}</Small>
+                  <Small>{pending.sent ? t('codeSent', { email: pending.email }) : pending.devCode ? t('codeHere', { code: pending.devCode }) : t('codeFailed')}</Small>
                   <Field placeholder={t('codePlaceholder')} value={code} onChangeText={setCode} keyboardType="number-pad" maxLength={6} autoFocus onSubmitEditing={() => canEnter && enter()} accessibilityLabel={t('codeLabel')} />
+                  {notice ? <Small style={styles.notice}>{notice}</Small> : null}
                   <ErrorText>{error}</ErrorText>
                   <Button title={t('confirm')} onPress={enter} disabled={!canEnter} loading={loading} />
                   <View style={styles.codeLinks}>
                     <Button title={t('resend')} variant="secondary" size="sm" onPress={resend} />
-                    <Button title={tc('back')} variant="secondary" size="sm" onPress={() => (setPending(null), setError(''))} />
+                    <Button title={tc('back')} variant="secondary" size="sm" onPress={() => (setPending(null), setError(''), setNotice(''))} />
                   </View>
                 </>
               ) : (
@@ -382,7 +409,8 @@ export default function Landing() {
                     ))}
                   </View>
                   <H3>{creating ? t('announce') : t('welcomeBack')}</H3>
-                  {googleId && (
+                  {/* кнопка Google есть только на сайте; в приложении разделитель «или по почте» был бы ни к чему */}
+                  {googleId && Platform.OS === 'web' && (
                     <>
                       <GoogleButton clientId={googleId} onToken={withGoogle} onError={setError} />
                       <View style={styles.or}>
@@ -392,7 +420,17 @@ export default function Landing() {
                       </View>
                     </>
                   )}
-                  <Field placeholder={t('email')} value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} maxLength={200} autoFocus accessibilityLabel={t('email')} />
+                  <Field
+                    placeholder={creating ? t('email') : t('emailOrNick')}
+                    value={email}
+                    onChangeText={setEmail}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    maxLength={200}
+                    autoFocus
+                    accessibilityLabel={creating ? t('email') : t('emailOrNick')}
+                  />
                   {creating && <Field placeholder={t('nickPlaceholder')} value={nick} onChangeText={setNick} autoCapitalize="none" autoCorrect={false} maxLength={50} accessibilityLabel={t('nick')} />}
                   <Field
                     placeholder={creating ? t('passwordNew') : t('password')}
@@ -411,8 +449,9 @@ export default function Landing() {
                 </>
               )}
             </Card>
-          </Pressable>
-        </Pressable>
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -469,8 +508,12 @@ const styles = StyleSheet.create({
   finalTitle: { fontSize: 40, lineHeight: 46, textAlign: 'center' },
   rowImage: { width: '100%', maxWidth: 1100, aspectRatio: 1649 / 417, marginTop: 24 },
   rowImageNarrow: { width: 600, maxWidth: 600, height: 152, aspectRatio: undefined, marginTop: 0 },
+  flex: { flex: 1 },
   backdrop: { flex: 1, backgroundColor: 'rgba(22,20,24,0.6)', alignItems: 'center', justifyContent: 'center', padding: 20 },
-  loginWrap: { width: '100%', maxWidth: 420 },
+  loginScroll: { width: '100%', maxWidth: 420, flexGrow: 0 },
+  loginScrollInner: { flexGrow: 1, justifyContent: 'center', paddingVertical: 12 },
+  close: { position: 'absolute', top: 12, right: 12, zIndex: 1 },
+  notice: { color: c.good },
   login: { gap: 14 },
   or: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   orLine: { flex: 1, height: 2, backgroundColor: c.onInkMuted },
