@@ -43,41 +43,51 @@ export function Icon({ name, color = c.ink, size = 20 }: { name: GlassIcon; colo
 }
 
 /**
- * Кнопка-пилюля на стекле: «назад», «в меню» и т. п. Нажатие слегка сжимает её, в вебе при наведении
- * стекло становится плотнее. Без title — круглая кнопка с одним значком.
+ * Кнопка-пилюля на стекле: «назад», «домой», язык, «Войти». Нажатие слегка сжимает её, в вебе при наведении
+ * стекло становится плотнее. Без title — круглая кнопка 44×44 с одним значком (label обязателен для скринридера).
+ * tone="ink" — тушь с оранжевой подписью: главное действие шапки («Войти») или выбранная вкладка.
+ * selected — это вкладка (ссылки «Главная» и «Профиль» в шапке компьютера): роль tab и состояние selected;
+ * без него это обычная кнопка.
  */
 export function GlassButton({
   title,
   icon,
   onPress,
   label,
-  active = false,
+  tone = 'glass',
+  selected,
 }: {
   title?: string;
   icon?: GlassIcon;
   onPress: () => void;
   label?: string;
-  /** Текущий раздел (ссылки шапки): тушь с оранжевой подписью, как выбранная вкладка дока. */
-  active?: boolean;
+  tone?: 'glass' | 'ink';
+  selected?: boolean;
 }) {
-  const ink = active ? c.orange : c.ink;
+  const ink = tone === 'ink';
+  const color = ink ? c.orange : c.ink;
   const content = (
     <View style={[styles.row, !title && styles.iconOnly]}>
-      {icon ? <Icon name={icon} color={ink} /> : null}
-      {title ? <Text style={[styles.title, { color: ink }]}>{title}</Text> : null}
+      {icon ? <Icon name={icon} color={color} /> : null}
+      {title ? (
+        <Text style={[styles.title, { color }]} numberOfLines={1}>
+          {title}
+        </Text>
+      ) : null}
     </View>
   );
+  const tab = selected !== undefined;
   return (
     <Pressable
-      accessibilityRole={active ? 'tab' : 'button'}
-      accessibilityState={active ? { selected: true } : undefined}
+      accessibilityRole={tab ? 'tab' : 'button'}
+      accessibilityState={tab ? { selected } : undefined}
       accessibilityLabel={label ?? title}
       onPress={onPress}
       hitSlop={6}
       style={({ pressed }) => [styles.press, pressed && styles.pressed]}>
       {({ hovered }: { pressed: boolean; hovered?: boolean }) =>
-        active ? (
-          <View style={[styles.pill, styles.active]}>{content}</View>
+        ink ? (
+          <View style={[styles.pill, styles.ink]}>{content}</View>
         ) : liquid ? (
           <GlassView glassEffectStyle="regular" isInteractive tintColor="rgba(255,248,231,0.3)" style={styles.pill}>
             {content}
@@ -98,6 +108,6 @@ const styles = StyleSheet.create({
   iconOnly: { width: 44, paddingLeft: 0, paddingRight: 0, justifyContent: 'center' },
   title: { fontFamily: font.bold, fontSize: 15, color: c.ink },
   solid: { backgroundColor: c.paper, ...outline },
-  active: { backgroundColor: c.ink, borderWidth: 2.5, borderColor: c.ink },
+  ink: { backgroundColor: c.ink, borderWidth: 2.5, borderColor: c.ink },
   webEdge: { borderWidth: 1.5, borderColor: 'rgba(42,36,28,0.18)', boxShadow: '0 6px 20px rgba(42,36,28,0.10), inset 0 1px 0 rgba(255,255,255,0.7)' } as ViewStyle,
 });

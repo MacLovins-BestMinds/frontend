@@ -27,6 +27,9 @@ type GameState = {
   /** Уровень сложности раунда. */
   difficulty: Difficulty;
   setDifficulty: (difficulty: Difficulty) => void;
+  /** Черновик своего питча: живёт, пока игрок ходит туда-обратно между экранами, и пропадает только при выходе. */
+  ownDraft: OwnPitchInput;
+  setOwnDraft: (patch: Partial<OwnPitchInput>) => void;
   /** Своя длина питча в секундах; null — как задаёт уровень. Это настройка игрока, между раундами не сбрасывается. */
   pitchLimits: PitchLimits | null;
   setPitchLimits: (limits: PitchLimits | null) => void;
@@ -61,6 +64,8 @@ type GameState = {
   setDelivery: (delivery: Delivery) => void;
   addJuryAnswer: (answer: JuryAnswer) => void;
   setResult: (result: Finish) => void;
+  /** Бросить незаконченный раунд: питч и его разбор не сохраняются, «Главная» больше не предлагает продолжить. */
+  discardRound: () => void;
 };
 
 export const useGame = create<GameState>((set) => ({
@@ -72,6 +77,7 @@ export const useGame = create<GameState>((set) => ({
   difficulty: 'easy',
   slides: [],
   pitchLimits: null,
+  ownDraft: { title: '', text: '', audience: 'business' },
   juryQuestions: [],
   flow: null,
   betterVersion: null,
@@ -92,6 +98,7 @@ export const useGame = create<GameState>((set) => ({
   setDifficulty: (difficulty) => set({ difficulty }),
   setSlides: (slides) => set({ slides }),
   setPitchLimits: (pitchLimits) => set({ pitchLimits }),
+  setOwnDraft: (patch) => set((s) => ({ ownDraft: { ...s.ownDraft, ...patch } })),
   signIn: (user, token) => {
     setAuthToken(token);
     saveSession({ user, token });
@@ -100,7 +107,28 @@ export const useGame = create<GameState>((set) => ({
   signOut: () => {
     setAuthToken(null);
     saveSession(null);
-    set({ user: null, token: null, round: null, delivery: null, result: null, reviewOf: null, juryAnswers: [], juryQuestions: [], flow: null, betterVersion: null, pitchAudioUri: null, pitchVideoUri: null });
+    // всё, что относится к прошлому игроку, — прочь: тема, свой питч, слайды, заметки и своя длина питча
+    set({
+      user: null,
+      token: null,
+      mode: 'training',
+      topic: null,
+      ownPitch: null,
+      ownDraft: { title: '', text: '', audience: 'business' },
+      notes: '',
+      slides: [],
+      pitchLimits: null,
+      round: null,
+      delivery: null,
+      result: null,
+      reviewOf: null,
+      juryAnswers: [],
+      juryQuestions: [],
+      flow: null,
+      betterVersion: null,
+      pitchAudioUri: null,
+      pitchVideoUri: null,
+    });
   },
   openReview: (review) =>
     set({
@@ -149,6 +177,8 @@ export const useGame = create<GameState>((set) => ({
   setNotes: (notes) => set({ notes }),
   setDelivery: (delivery) => set({ delivery }),
   addJuryAnswer: (answer) => set((s) => ({ juryAnswers: [...s.juryAnswers, answer] })),
+  discardRound: () =>
+    set({ round: null, delivery: null, result: null, juryAnswers: [], juryQuestions: [], flow: null, betterVersion: null, pitchAudioUri: null, pitchVideoUri: null }),
   setResult: (result) =>
     set((s) => {
       const user = s.user ? { ...s.user, rank: result.rank } : s.user;
@@ -163,4 +193,15 @@ onUnauthorized(() => useGame.getState().signOut());
 /** Сколько говорить в этом раунде: своя длина игрока или лимиты уровня, которые прислал сервер. */
 export function pitchLimitsFor(round: Round | null, custom: PitchLimits | null): PitchLimits {
   return custom ?? { min: round?.pitch_min_sec ?? 60, max: round?.pitch_max_sec ?? 180 };
+}
+
+/**
+ * Раунд, который можно продолжить: питч уже разобран, а итога ещё нет (игрок ушёл с жюри назад, со сцены
+ * во время разбора или вышел из браузера назад). «Главная» предлагает вернуться к жюри — питч не теряется.
+ */
+export function useUnfinishedRound(): { title: string; answered: number } | null {
+  // селекторы отдают примитивы: новый объект на каждый вызов zustand 5 счёл бы изменением и зациклил перерисовку
+  const title = useGame((s) => (s.round && s.delivery && !s.result && !s.reviewOf && s.topic ? s.topic.title : null));
+  const answered = useGame((s) => s.juryAnswers.length);
+  return title === null ? null : { title, answered };
 }

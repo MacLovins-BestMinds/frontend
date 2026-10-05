@@ -55,10 +55,11 @@ export function onUnauthorized(handler: () => void) {
  * Приложение: файлы в multipart уходят через XMLHttpRequest. Глобальный fetch в Expo SDK 57 — это expo/fetch,
  * а он не понимает части FormData вида { uri, name, type } и падает «Unsupported FormDataPart implementation».
  */
-function sendForm(url: string, init: RequestInit & { headers: Record<string, string> }): Promise<Response> {
+function sendForm(url: string, init: RequestInit & { headers: Record<string, string> }, timeoutMs: number): Promise<Response> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open(init.method ?? 'POST', url);
+    xhr.timeout = timeoutMs;
     Object.entries(init.headers).forEach(([k, v]) => xhr.setRequestHeader(k, v));
     xhr.onload = () => resolve(new Response(xhr.responseText, { status: xhr.status }));
     xhr.onerror = () => reject(new Error(translate('common', 'errNetwork')));
@@ -67,7 +68,13 @@ function sendForm(url: string, init: RequestInit & { headers: Record<string, str
   });
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+// Сколько ждать ответа: обычный запрос — 30 с; разбор записи, вопросы жюри с озвучкой и слайды — дольше.
+// Без этого зависший сервер оставлял крутиться ожидание без конца, и уйти с него было некуда.
+const TIMEOUT_MS = 30_000;
+const LONG_MS = 120_000;
+const UPLOAD_MS = 180_000;
+
+async function request<T>(path: string, init?: RequestInit, timeoutMs = TIMEOUT_MS): Promise<T> {
   if (!env.apiUrl) throw new Error(translate('common', 'errNoApi'));
   // язык интерфейса: на нём сервер присылает темы, разбор и тексты ошибок
   const headers = {
@@ -77,11 +84,19 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   };
   const url = env.apiUrl.replace(/\/$/, '') + path;
   let res: Response;
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(), timeoutMs);
   try {
-    res = Platform.OS !== 'web' && init?.body instanceof FormData ? await sendForm(url, { ...init, headers }) : await fetch(url, { ...init, headers });
+    res =
+      Platform.OS !== 'web' && init?.body instanceof FormData
+        ? await sendForm(url, { ...init, headers }, timeoutMs)
+        : await fetch(url, { ...init, headers, signal: abort.signal });
   } catch (e) {
+    if (abort.signal.aborted) throw new Error(translate('common', 'errTimeout'));
     // сервер недоступен: вместо «Failed to fetch» браузера — понятная фраза на языке интерфейса
     throw e instanceof TypeError ? new Error(translate('common', 'errNetwork')) : e;
+  } finally {
+    clearTimeout(timer);
   }
   // вход по неверному паролю тоже отвечает 401 — выходим только там, где токен был отправлен
   if (res.status === 401 && token && !path.startsWith('/api/auth/')) onSignedOut();
@@ -98,12 +113,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json();
 }
 
-function post<T>(path: string, body?: unknown): Promise<T> {
-  return request<T>(path, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
+function post<T>(path: string, body?: unknown, timeoutMs?: number): Promise<T> {
+  return request<T>(
+    path,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    },
+    timeoutMs,
+  );
 }
 
 async function appendAudio(form: FormData, uri: string) {
@@ -160,7 +179,7 @@ export const api = {
     form.append('title', title);
     form.append('text', text);
     form.append('audience', audience);
-    return request<FitSlides>('/api/ai/fit-slides', { method: 'POST', body: form });
+    return request<FitSlides>('/api/ai/fit-slides', { method: 'POST', body: form }, LONG_MS);
   },
 
   /** История всех раундов и трекер прогресса вошедшего пользователя. */
@@ -197,7 +216,7 @@ export const api = {
   refine: (text: string, audience: string, mode: 'structure' | 'improve') =>
     env.useMocks
       ? mocked(mocks.refine(mode))
-      : post<RefineResponse>('/api/ai/refine', { text, audience, mode }),
+      : post<RefineResponse>('/api/ai/refine', { text, audience, mode }, LONG_MS),
 
   delivery: async (roundId: string, audioUri: string | null, gaze: GazePoint[] = [], notes = '', pace: Pace = 'normal', limits: PitchLimits | null = null) => {
     if (env.useMocks) return mocked(mocks.delivery());
@@ -213,12 +232,12 @@ export const api = {
       form.append('min_sec', String(limits.min));
       form.append('max_sec', String(limits.max));
     }
-    return request<Delivery>(`/api/ai/rounds/${roundId}/delivery`, { method: 'POST', body: form });
+    return request<Delivery>(`/api/ai/rounds/${roundId}/delivery`, { method: 'POST', body: form }, UPLOAD_MS);
   },
 
   juryQuestions: async (roundId: string, difficulty: Difficulty = 'easy') => {
     if (env.useMocks) return mocked(mocks.juryQuestions());
-    const res = await post<{ questions: JuryQuestion[] }>(`/api/ai/rounds/${roundId}/jury/questions?difficulty=${difficulty}`);
+    const res = await post<{ questions: JuryQuestion[] }>(`/api/ai/rounds/${roundId}/jury/questions?difficulty=${difficulty}`, undefined, LONG_MS);
     return res.questions;
   },
 
@@ -229,10 +248,14 @@ export const api = {
     form.append('question_id', questionId);
     form.append('difficulty', difficulty);
     await appendAudio(form, audioUri);
-    return request<JuryAnswer>(`/api/ai/rounds/${roundId}/jury/answer`, {
-      method: 'POST',
-      body: form,
-    });
+    return request<JuryAnswer>(
+      `/api/ai/rounds/${roundId}/jury/answer`,
+      {
+        method: 'POST',
+        body: form,
+      },
+      LONG_MS,
+    );
   },
 
   /** Пропустить вопрос жюри: засчитывается 0 баллов. */

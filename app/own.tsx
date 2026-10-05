@@ -16,7 +16,9 @@ import { useT } from '@/i18n';
 import { useGame } from '@/store/game';
 import { AppHeader } from '@/ui/AppHeader';
 import { goBack } from '@/ui/nav';
+import { okToStartNewRound } from '@/ui/newRound';
 import { TicketButton } from '@/ui/decor';
+import { PREP_MIN } from '@/ui/LevelPicker';
 import { Button, Card, Container, ErrorText, Field, H1, Label, Muted, Page, Small } from '@/ui/primitives';
 
 type RefineMode = 'structure' | 'improve';
@@ -38,9 +40,15 @@ export default function OwnPitch() {
       return () => setFocused(false);
     }, []),
   );
-  const [title, setTitle] = useState('');
-  const [audience, setAudience] = useState<AudienceId>('business');
-  const [text, setText] = useState('');
+  // черновик живёт в состоянии игры: «назад» и возврат с подготовки его не стирают
+  const draft = useGame((s) => s.ownDraft);
+  const setOwnDraft = useGame((s) => s.setOwnDraft);
+  const difficulty = useGame((s) => s.difficulty);
+  const { title, text } = draft;
+  const audience = draft.audience as AudienceId;
+  const setTitle = (value: string) => setOwnDraft({ title: value });
+  const setAudience = (value: AudienceId) => setOwnDraft({ audience: value });
+  const setText = (value: string) => setOwnDraft({ text: value });
   const [original, setOriginal] = useState('');
   const [refined, setRefined] = useState<RefineResponse | null>(null);
   const [loading, setLoading] = useState<RefineMode | 'slides' | 'show' | null>(null);
@@ -57,10 +65,10 @@ export default function OwnPitch() {
     setError('');
     setLoading(mode);
     try {
-      // «было» — всегда исходный текст автора, даже если улучшаем второй раз
-      const source = original || text;
-      if (!original) setOriginal(text);
-      setRefined(await api.refine(source.trim(), audience, mode));
+      // ИИ работает с тем, что сейчас в поле (с правками игрока); «было» — текст прямо перед этой правкой,
+      // его и вернёт «Вернуть мой»
+      setOriginal(text);
+      setRefined(await api.refine(text.trim(), audience, mode));
       setDetails(false);
     } catch (e) {
       setError(t('errAi', { message: (e as Error).message }));
@@ -89,8 +97,8 @@ export default function OwnPitch() {
     setError('');
     setLoading('slides');
     try {
-      if (!original) setOriginal(text);
-      setFitted(await api.fitSlides(deck, title.trim(), (original || text).trim(), audience));
+      setOriginal(text);
+      setFitted(await api.fitSlides(deck, title.trim(), text.trim(), audience));
     } catch (e) {
       setError(t('errFit', { message: (e as Error).message.replace(/^\d+: /, '') }));
     } finally {
@@ -113,16 +121,29 @@ export default function OwnPitch() {
     }
   };
 
-  const start = () => {
+  const start = async () => {
+    if (loading) return; // ИИ или слайды ещё работают — их результат иначе потерялся бы
     if (!title.trim()) return setError(t('errTitle'));
     if (!text.trim()) return setError(t('errBody'));
+    // незаконченный раунд не пропадает молча: сначала спрашиваем
+    if (!(await okToStartNewRound())) return;
     startOwnPitch({ title: title.trim(), text: text.trim(), audience });
-    router.push('/prep');
+    // экран своего питча заменяется подготовкой: дальше идёт раунд, и «назад» из него ведёт на «Главную»
+    // (docs/ux.md); черновик хранится и снова откроется со всем текстом
+    router.replace('/prep');
   };
 
   return (
-    <Page sticky footer={<TicketButton title={t('next')} stubTop={tc('minutes', { n: 5 })} stubBottom="→" onPress={start} stretch={!wide} />}>
-      <AppHeader back={() => goBack()} />
+    <Page
+      sticky
+      footer={
+        // ошибка — прямо над кнопкой «Дальше»: внизу длинной страницы её не видно, и кнопка казалась мёртвой
+        <View style={styles.footer}>
+          <ErrorText>{error}</ErrorText>
+          <TicketButton title={t('next')} stubTop={tc('minutes', { n: PREP_MIN[difficulty] })} stubBottom="→" onPress={start} stretch={!wide} />
+        </View>
+      }>
+      <AppHeader corner={{ icon: 'back', label: tc('back'), onPress: () => goBack() }} />
       <Container style={[styles.main, wide && styles.mainWide]}>
         <View style={[styles.col, wide && styles.colWide]}>
           <H1 style={!wide && styles.titleNarrow}>{t('title')}</H1>
@@ -183,7 +204,8 @@ export default function OwnPitch() {
             <View style={styles.refine}>
               <Button title={deck ? t('chooseAnother') : t('upload')} variant="secondary" size="sm" disabled={loading !== null} onPress={pickDeck} />
               {deck && <Button title={t('fit')} size="sm" loading={loading === 'slides'} disabled={loading !== null} onPress={fit} />}
-              {deck && (
+              {/* слайды могли остаться с прошлого раза (файла уже нет) — их всё равно можно выключить */}
+              {(deck || slides.length > 0) && (
                 <Button
                   title={slides.length ? t('slidesOn') : t('present')}
                   variant={slides.length ? 'ink' : 'primary'}
@@ -260,7 +282,6 @@ export default function OwnPitch() {
               )}
             </Card>
           )}
-          <ErrorText>{error}</ErrorText>
         </View>
       </Container>
     </Page>
@@ -269,6 +290,7 @@ export default function OwnPitch() {
 
 const styles = StyleSheet.create({
   main: { paddingTop: 8, paddingBottom: 56, gap: 22 },
+  footer: { gap: 8 },
   mainWide: { flexDirection: 'row', alignItems: 'flex-start', gap: 40, paddingTop: 16 },
   col: { gap: 20 },
   colWide: { flex: 1 },

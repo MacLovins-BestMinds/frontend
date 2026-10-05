@@ -8,7 +8,7 @@ import { Platform, View } from 'react-native';
 import { c } from '@/design/theme';
 
 export default function RootLayout() {
-  const [ready] = useFonts({
+  const [ready, fontError] = useFonts({
     ShantellSans_700Bold,
     ShantellSans_800ExtraBold,
     Rubik_400Regular,
@@ -17,8 +17,8 @@ export default function RootLayout() {
     Rubik_600SemiBold,
     Rubik_700Bold,
   });
-  // пока шрифты грузятся — пустой кремовый экран, чтобы текст не прыгал
-  if (!ready) return <View style={{ flex: 1, backgroundColor: c.cream }} />;
+  // пока шрифты грузятся — пустой кремовый экран, чтобы текст не прыгал; не загрузились — системными шрифтами
+  if (!ready && !fontError) return <View style={{ flex: 1, backgroundColor: c.cream }} />;
   return (
     <>
       <StatusBar style="dark" />
@@ -37,9 +37,16 @@ export default function RootLayout() {
         {/* вкладки «Главная» и «Профиль» — дом вошедшего; назад на лендинг с них не уводим */}
         <Stack.Screen name="(tabs)" options={{ animation: 'fade', gestureEnabled: false }} />
         {/* сцена, жюри и разбор — один раунд: открываются плавно, как занавес, и свайпом их не закрыть, чтобы не оборвать запись */}
+        {/* подготовка: свайп назад только от края — по всему экрану он мешал бы писать заметки и листать слайды */}
+        <Stack.Screen name="prep" options={{ fullScreenGestureEnabled: false }} />
         <Stack.Screen name="stage" options={{ animation: 'fade', gestureEnabled: false }} />
         <Stack.Screen name="jury" options={{ animation: 'fade', gestureEnabled: false }} />
-        <Stack.Screen name="result" options={{ animation: 'slide_from_bottom', gestureEnabled: false }} />
+        {/* разбор только что сыгранного раунда выезжает снизу как финал, свайпом не закрывается (выход — «домой» в углу);
+            разбор из истории (/result?round=<id>) — обычная страница: выезжает справа, свайп назад возвращает в профиль */}
+        <Stack.Screen
+          name="result"
+          options={({ route }) => ((route.params as { round?: string } | undefined)?.round ? {} : { animation: 'slide_from_bottom', gestureEnabled: false })}
+        />
       </Stack>
     </>
   );

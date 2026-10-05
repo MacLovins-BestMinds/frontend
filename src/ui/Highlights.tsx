@@ -74,7 +74,7 @@ export function Highlights({ delivery, wide }: { delivery: Delivery; wide: boole
   else if (scores.delivery.timing < 70) bad.push({ key: 'timing', text: t('hl.timingBad', { n: formatTime(m.duration_sec) }) });
 
   const column = (title: string, items: Item[], tone: 'good' | 'bad', empty: string) => (
-    <View style={styles.column}>
+    <View style={[styles.column, wide && styles.columnWide]}>
       <Text style={[styles.columnTitle, { color: tone === 'good' ? c.good : c.bad }]}>{title}</Text>
       {items.length === 0 ? (
         <Muted style={styles.empty}>{empty}</Muted>
@@ -107,7 +107,9 @@ const styles = StyleSheet.create({
   cardWide: { padding: 30, borderRadius: 24 },
   columns: { gap: 18 },
   columnsWide: { flexDirection: 'row', gap: 28 },
-  column: { flex: 1, gap: 10 },
+  // на телефоне колонки идут одна под другой и растут по содержимому; flex: 1 там схлопывал их, и строки налезали
+  column: { gap: 10 },
+  columnWide: { flex: 1 },
   columnTitle: { fontFamily: font.bold, fontSize: 13, lineHeight: 17, letterSpacing: 1, textTransform: 'uppercase' },
   empty: { fontSize: 15, lineHeight: 21 },
   item: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },

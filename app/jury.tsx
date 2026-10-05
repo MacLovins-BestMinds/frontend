@@ -8,11 +8,14 @@ import { playUrl, type Playback } from '@/audio/playback';
 import { useRecorder } from '@/audio/useRecorder';
 import { c, font, jurorName, outline, shadow } from '@/design/theme';
 import { useLayout } from '@/hooks/useLayout';
+import { useLeaveGuard } from '@/hooks/useLeaveGuard';
 import { useT } from '@/i18n';
 import { JURORS, JuryTable } from '@/scene/AudienceScene';
 import { useGame } from '@/store/game';
 import { AppHeader } from '@/ui/AppHeader';
 import { Bubble, DashedLine, Valance } from '@/ui/decor';
+import { confirm } from '@/ui/confirm';
+import { useBackAction } from '@/ui/nav';
 import { Pending } from '@/ui/Pending';
 import { Button, Card, Container, ErrorText, H1, H3, Label, Muted, P, Page, Small } from '@/ui/primitives';
 
@@ -27,7 +30,8 @@ export default function Jury() {
   const { user, round, difficulty, addJuryAnswer, setJuryQuestions, setResult } = useGame();
   const recorder = useRecorder();
   const [questions, setQuestions] = useState<JuryQuestion[]>([]);
-  const [index, setIndex] = useState(0);
+  // вернулись к жюри с «Главной» (раунд не был закончен) — продолжаем с первого вопроса без ответа
+  const [index, setIndex] = useState(() => useGame.getState().juryAnswers.length);
   const [phase, setPhase] = useState<Phase>('loading');
   const [left, setLeft] = useState(ANSWER_SEC);
   const [comment, setComment] = useState<{ score: number; text: string } | null>(null);
@@ -38,6 +42,21 @@ export default function Jury() {
   const player = useRef<Playback | null>(null);
   const answerUri = useRef<string | null>(null);
   const sending = useRef(false);
+  const ending = useRef(false);
+  const phaseRef = useRef<Phase>('loading');
+  phaseRef.current = phase;
+  // игрок ушёл с экрана: ответы, которые придут позже, никуда его не уводят, а микрофон и озвучка выключаются
+  const gone = useRef(false);
+  const recorderRef = useRef(recorder);
+  recorderRef.current = recorder;
+  useEffect(
+    () => () => {
+      gone.current = true;
+      player.current?.stop();
+      void recorderRef.current.stop();
+    },
+    [],
+  );
 
   const question = questions[index];
 
@@ -49,7 +68,14 @@ export default function Jury() {
       .then((q) => {
         setQuestions(q);
         setJuryQuestions(q);
-        setPhase('question');
+        // протокол жюри: баллы за вопросы, на которые уже ответили до ухода с экрана
+        const answered = useGame.getState().juryAnswers;
+        setScores(Object.fromEntries(q.slice(0, answered.length).map((item, i) => [item.juror, answered[i].score])));
+        // ответы на все вопросы уже есть, а итог не посчитан — сразу «Смотреть разбор»
+        if (q.length && answered.length >= q.length) {
+          setIndex(q.length - 1);
+          setPhase('comment');
+        } else setPhase('question');
       })
       .catch((e: Error) => setError(t('errLoad', { message: e.message })));
   };
@@ -84,10 +110,49 @@ export default function Jury() {
   const startAnswer = async () => {
     player.current?.stop();
     answerUri.current = null;
+    setError('');
     setLeft(ANSWER_SEC);
     setPhase('answering');
-    await recorder.start();
+    // микрофон не включился — не ждём впустую 30 секунд, а сразу говорим, что не так
+    if (!(await recorder.start())) {
+      setPhase('question');
+      setError(t('noMic'));
+    }
   };
+
+  /**
+   * Закончить раунд сейчас: оставшиеся вопросы пропускаются (0 баллов), раунд считается, и игрок видит разбор.
+   * Питч не теряется никогда — это единственный выход с жюри (крестик в шапке, «назад» на Android).
+   */
+  const endRound = async () => {
+    // итог уже считается («Смотреть разбор») — второй раз не начинаем
+    if (!round || ending.current || sending.current || phaseRef.current === 'finishing') return;
+    const ok = await confirm({ title: t('endTitle'), message: t('endText'), ok: t('endOk'), cancel: tc('cancel'), destructive: true });
+    // пока шёл вопрос, игрок мог успеть нажать «Смотреть разбор»
+    if (!ok || gone.current || ending.current || (phaseRef.current as Phase) === 'finishing') return;
+    ending.current = true;
+    player.current?.stop();
+    if (phaseRef.current === 'answering') await recorder.stop();
+    const back: Phase = questions.length ? 'question' : 'loading';
+    setPhase('finishing');
+    setError('');
+    try {
+      const answered = useGame.getState().juryAnswers.length;
+      for (const q of questions.slice(answered)) addJuryAnswer(await api.jurySkip(round.round_id, q.id));
+      setResult(await api.finish(round.round_id));
+      if (!gone.current) router.replace('/result');
+    } catch (e) {
+      setError(t('errResult', { message: (e as Error).message }));
+      setIndex(useGame.getState().juryAnswers.length);
+      setComment(null);
+      setPhase(back);
+    } finally {
+      ending.current = false;
+    }
+  };
+  useBackAction(() => void endRound());
+  // сайт: раунд живёт только в памяти вкладки — обновление или закрытие спрашивает подтверждение
+  useLeaveGuard(true);
 
   /** Пропустить вопрос: 0 баллов, сразу комментарий и «Дальше». Запись ответа, если шла, выбрасываем. */
   const skip = async () => {
@@ -159,7 +224,7 @@ export default function Jury() {
   }, [phase]);
 
   const next = async () => {
-    if (!round) return;
+    if (!round || ending.current || phaseRef.current === 'finishing') return;
     setError('');
     // прошлый ответ не ушёл — пробуем ещё раз
     if (!comment && answerUri.current) return sendAnswer();
@@ -172,7 +237,7 @@ export default function Jury() {
     setPhase('finishing');
     try {
       setResult(await api.finish(round.round_id));
-      router.replace('/result');
+      if (!gone.current) router.replace('/result');
     } catch (e) {
       setError(t('errResult', { message: (e as Error).message }));
       setPhase('comment');
@@ -204,10 +269,11 @@ export default function Jury() {
         <Button title={t('playQuestion')} variant="secondary" onPress={() => playQuestion(mediaUrl(question.audio_url))} />
       )}
       {phase === 'question' && <Button title={t('answer')} onPress={startAnswer} />}
+      {(phase === 'answering' || phase === 'sending') && <Button title={t('done')} loading={phase === 'sending'} onPress={sendAnswer} />}
+      {/* «Пропустить» — под главной кнопкой и мельче: во время ответа рядом с «Готово» его легко нажать случайно */}
       {(phase === 'question' || phase === 'answering') && (
         <Button title={t('skip')} variant="secondary" size="sm" onPress={skip} style={styles.skip} />
       )}
-      {(phase === 'answering' || phase === 'sending') && <Button title={t('done')} loading={phase === 'sending'} onPress={sendAnswer} />}
       {(phase === 'comment' || phase === 'finishing') && (
         <Button
           title={!comment && answerUri.current ? t('sendAgain') : index + 1 < questions.length ? t('nextQuestion') : t('seeReview')}
@@ -253,7 +319,7 @@ export default function Jury() {
 
   return (
     <Page sticky>
-      <AppHeader />
+      <AppHeader corner={{ icon: 'close', label: t('endRound'), onPress: () => void endRound() }} />
       <Container style={styles.main}>
         <View style={styles.head}>
           <H1 style={!wide && styles.titleNarrow}>{t('title')}</H1>

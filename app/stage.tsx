@@ -1,6 +1,6 @@
 import { Redirect, router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { AppState, Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { api } from '@/api/client';
@@ -11,6 +11,7 @@ import { useRecorder } from '@/audio/useRecorder';
 import { env } from '@/config/env';
 import { c, font, formatRange, formatTime, outline, shadow } from '@/design/theme';
 import { useLayout } from '@/hooks/useLayout';
+import { useLeaveGuard } from '@/hooks/useLeaveGuard';
 import { useStayAwake } from '@/hooks/useStayAwake';
 import { translate, useT } from '@/i18n';
 import { AudienceScene } from '@/scene/AudienceScene';
@@ -20,7 +21,10 @@ import { pitchLimitsFor, useGame } from '@/store/game';
 import { Bulbs, EyeIcon } from '@/ui/decor';
 import { Pending } from '@/ui/Pending';
 import { SlideFrame } from '@/ui/SlideFrame';
-import { Button, ErrorText } from '@/ui/primitives';
+import { confirm } from '@/ui/confirm';
+import { Icon } from '@/ui/Glass';
+import { goMenu, useBackAction } from '@/ui/nav';
+import { Button, Card, ErrorText } from '@/ui/primitives';
 
 // Шкала внимания — это то, что зал думает о последних секундах выступления. Она складывается из трёх вещей:
 // 1) звучит ли голос (сам по себе голос поднимает шкалу только до 60);
@@ -105,6 +109,17 @@ export default function Stage() {
   // что происходит после «Закончить»: 0 — сохраняем запись, 1 — сервер слушает и оценивает
   const [step, setStep] = useState(0);
   const [error, setError] = useState('');
+  // запись не читается (422): отправлять её снова бесполезно — предлагаем записать заново
+  const [unreadable, setUnreadable] = useState(false);
+  // игрок ушёл со сцены («Покинуть раунд», назад): разбор, который придёт позже, выбрасываем — он никуда не уводит
+  // и не всплывает на «Главной» как незаконченный раунд (docs/ux.md)
+  const gone = useRef(false);
+  useEffect(
+    () => () => {
+      gone.current = true;
+    },
+    [],
+  );
   const audioUri = useRef<string | null>(null);
   const audioStart = useRef(0); // секунда раунда, с которой реально пишется звук
   const finished = useRef(false);
@@ -178,7 +193,17 @@ export default function Stage() {
   const maxSec = limits.max;
 
   // разрешение на микрофон спрашиваем сразу, ещё до Start
+  // после «Открыть Настройки» человек возвращается в приложение — спрашиваем микрофон заново
+  const [micCheck, setMicCheck] = useState(0);
   useEffect(() => {
+    if (Platform.OS === 'web' || mic !== 'denied') return undefined;
+    const sub = AppState.addEventListener('change', (state) => state === 'active' && setMicCheck((n) => n + 1));
+    return () => sub.remove();
+  }, [mic]);
+  const hasRound = !!round;
+  useEffect(() => {
+    // открыли /stage по ссылке без раунда — экран сейчас уйдёт на главную, микрофон не трогаем
+    if (!hasRound) return undefined;
     let release = () => {};
     let cancelled = false;
     prepareMic().then((r) => {
@@ -190,7 +215,7 @@ export default function Stage() {
       cancelled = true;
       release();
     };
-  }, []);
+  }, [hasRound, micCheck]);
 
   const begin = () => {
     if (startedRef.current) return;
@@ -286,23 +311,51 @@ export default function Stage() {
     stopLive.current();
     try {
       audioUri.current = audioUri.current ?? (await recorder.stop());
+      if (gone.current) return;
       setPitchAudio(audioUri.current);
       // видео остаётся в браузере для разбора, на бэкенд уходят только моменты, когда взгляд уходил из зала
       if (capture.current) {
         shot.current = await capture.current.stop();
         capture.current = null;
+        if (gone.current) return;
         // смещение видео — относительно начала звукозаписи: в разборе время ведёт звук
         setPitchVideo(shot.current.videoUri, shot.current.videoOffset - audioStart.current);
       }
       setStep(1);
-      setDelivery(await api.delivery(round.round_id, audioUri.current, shot.current?.gaze ?? [], notes, pace, pitchLimits ? limits : null));
+      const delivery = await api.delivery(round.round_id, audioUri.current, shot.current?.gaze ?? [], notes, pace, pitchLimits ? limits : null);
+      if (gone.current) return;
+      setDelivery(delivery);
       router.replace('/jury');
     } catch (e) {
+      if (gone.current) return;
       // запись уже сохранена: «Попробовать ещё раз» отправит её же, а не начнёт питч заново
-      setError(t('errReview', { message: (e as Error).message }));
+      const message = (e as Error).message;
+      setUnreadable(message.startsWith('422'));
+      setError(t('errReview', { message }));
       finished.current = false;
     }
   };
+
+  /** Назад к подготовке: тот же раунд и заметки, таймер подготовки — заново. */
+  const backToPrep = () => router.replace('/prep');
+  /** Во время выступления выйти можно только осознанно: запись пропадёт. */
+  const stopAndBack = async () => {
+    const ok = await confirm({ title: t('stopTitle'), message: t('stopText'), ok: t('stopOk'), cancel: tc('cancel'), destructive: true });
+    if (ok && !finished.current) backToPrep();
+  };
+  /** После «Закончить» (идёт разбор или он не удался) — уйти на «Главную» без разбора, тоже с вопросом. */
+  const leaveRound = async () => {
+    const ok = await confirm({ title: t('leaveTitle'), message: t('leaveText'), ok: t('leaveRound'), cancel: tc('cancel'), destructive: true });
+    if (ok) goMenu();
+  };
+  // сайт: во время выступления и разбора обновление вкладки спрашивает подтверждение
+  useLeaveGuard(started);
+  // системная «назад» на Android — то же, что видимый выход с этого состояния сцены
+  useBackAction(() => {
+    if (sending) return void leaveRound();
+    if (started) return void stopAndBack();
+    backToPrep();
+  });
 
   // лимит времени вышел — заканчиваем сами
   useEffect(() => {
@@ -340,6 +393,17 @@ export default function Stage() {
         <Bulbs value={attention} count={big ? 20 : 15} size={big ? 20 : landscape ? 13 : 11} />
       </View>
     </View>
+  );
+  // остановить выступление можно всегда и на виду (на iOS нет системной «назад»): запись пропадёт, поэтому — с вопросом
+  const stopButton = (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={t('stopTitle')}
+      onPress={() => void stopAndBack()}
+      hitSlop={6}
+      style={({ pressed }) => [styles.board, styles.stop, big && styles.stopBig, pressed && { opacity: 0.7 }]}>
+      <Icon name="close" color={c.orange} size={big ? 22 : 20} />
+    </Pressable>
   );
   const finishButton = (
     // закончить можно в любой момент: короткий питч бэкенд не отвергает, он просто получает меньше баллов за тайминг
@@ -384,6 +448,7 @@ export default function Stage() {
       <View style={[styles.hud, hud]} pointerEvents="box-none">
         {landscape ? (
           <View style={[styles.row, big && { gap: 20 }]}>
+            {started && !sending && stopButton}
             {timer}
             <View style={styles.grow}>{attentionBar}</View>
             {started && finishButton}
@@ -391,6 +456,7 @@ export default function Stage() {
         ) : (
           <>
             <View style={styles.row}>
+              {started && !sending && stopButton}
               <View style={styles.grow}>{timer}</View>
               {started && finishButton}
             </View>
@@ -422,28 +488,43 @@ export default function Stage() {
             </Text>
             <Text style={styles.readyText}>{t('startNote', { range: formatRange(limits.min, limits.max), start: t('start') })}</Text>
             <View style={styles.checks}>
-              <Text style={[styles.check, mic === 'denied' && { color: c.bad }]}>{t(mic === 'ok' ? 'micReady' : mic === 'asking' ? 'micAsking' : 'micDenied')}</Text>
+              <Text style={[styles.check, mic === 'denied' && { color: c.bad }]}>
+                {t(mic === 'ok' ? 'micReady' : mic === 'asking' ? 'micAsking' : Platform.OS === 'web' ? 'micDenied' : 'micDeniedApp')}
+              </Text>
+              {mic === 'denied' && Platform.OS !== 'web' ? (
+                <Button size="sm" variant="secondary" title={t('openSettings')} onPress={() => Linking.openSettings()} style={styles.settings} />
+              ) : null}
               <Text style={styles.check}>{t(cameraOn ? 'cameraOn' : 'cameraOff')}</Text>
             </View>
           </View>
-          <Button size="lg" title={mic === 'asking' ? t('waitingMic') : t('start')} disabled={mic === 'asking'} onPress={begin} style={styles.start} />
+          {/* «назад» — рядом со стартом: до старта со сцены можно спокойно вернуться к подготовке */}
+          <View style={styles.startRow}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={t('backToPrep')}
+              onPress={backToPrep}
+              style={({ pressed }) => [styles.back, pressed && styles.backPressed]}>
+              <Icon name="back" size={24} />
+            </Pressable>
+            {/* без микрофона на настоящем сервере выступать бессмысленно: запись будет пустой */}
+            <Button size="lg" title={mic === 'asking' ? t('waitingMic') : t('start')} disabled={mic === 'asking' || (mic === 'denied' && !env.useMocks)} onPress={begin} style={styles.start} />
+          </View>
         </View>
       )}
       {sending && (
         <View style={[styles.pending, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 16 }]}>
           {error ? (
-            <View style={styles.pendingCard}>
+            <Card style={styles.pendingCard}>
               <ErrorText>{error}</ErrorText>
-              <Button title={tc('tryAgain')} onPress={finish} />
-            </View>
+              {unreadable ? <Button title={t('recordAgain')} onPress={backToPrep} /> : <Button title={tc('tryAgain')} onPress={finish} />}
+              <Button title={t('leaveRound')} variant="secondary" onPress={() => void leaveRound()} />
+            </Card>
           ) : (
-            <Pending
-              style={styles.pendingCard}
-              title={t('reviewing')}
-              steps={[t('stepSave'), t('stepScore'), t('stepJury')]}
-              current={step}
-              note={t('reviewingNote')}
-            />
+            <View style={styles.pendingCard}>
+              <Pending title={t('reviewing')} steps={[t('stepSave'), t('stepScore'), t('stepJury')]} current={step} note={t('reviewingNote')} />
+              {/* выход есть и во время разбора: на iOS нет системной «назад», а ответ сервера может идти долго */}
+              <Button title={t('leaveRound')} variant="secondary" size="sm" onPress={() => void leaveRound()} style={styles.leave} />
+            </View>
           )}
         </View>
       )}
@@ -486,13 +567,21 @@ const styles = StyleSheet.create({
   hintDot: { width: 14, height: 14, borderRadius: 7, backgroundColor: c.bad, borderWidth: 2, borderColor: c.ink },
   hintText: { fontFamily: font.bold, fontSize: 16, lineHeight: 21, color: c.ink, flexShrink: 1 },
   ready: { position: 'absolute', left: 0, right: 0, bottom: 0, alignItems: 'center', gap: 12 },
+  settings: { alignSelf: 'flex-start', marginTop: 6 },
   readyCard: { width: '100%', maxWidth: 520, gap: 6, backgroundColor: c.paper, borderRadius: 20, padding: 18, ...outline, ...shadow(4) },
   readyLabel: { fontFamily: font.bold, fontSize: 12, letterSpacing: 1, textTransform: 'uppercase', color: c.burnt },
   readyTitle: { fontFamily: font.display, fontSize: 24, lineHeight: 30, color: c.ink },
   readyText: { fontFamily: font.body, fontSize: 15, lineHeight: 21, color: c.ink },
   checks: { gap: 2, marginTop: 4 },
   check: { fontFamily: font.semi, fontSize: 14, lineHeight: 20, color: c.graphite },
-  start: { width: '100%', maxWidth: 520 },
+  leave: { alignSelf: 'center' },
+  stop: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  stopBig: { width: 52, height: 52, borderRadius: 26 },
+  // «назад» — плотная квадратная кнопка той же высоты, что «Старт»: поверх сцены стекло читалось плохо
+  back: { width: 60, height: 60, borderRadius: 16, backgroundColor: c.paper, alignItems: 'center', justifyContent: 'center', ...outline, ...shadow(4) },
+  backPressed: { transform: [{ translateX: 2 }, { translateY: 2 }] },
+  startRow: { width: '100%', maxWidth: 520, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  start: { flex: 1 },
   pending: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(22, 20, 24, 0.55)', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16 },
   pendingCard: { width: '100%', maxWidth: 460, gap: 12 },
   notice: { position: 'absolute', left: 20, right: 20, alignItems: 'center' },
